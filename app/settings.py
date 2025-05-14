@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     DB_USER: str = "postgres"
     DB_PASSWORD: str = "postgres"
 
-    SQL_DIR: Path = Path(__file__).parent.parent / "sql"
+    SQL_DIR: Path = Path(__file__).parent / "sql"
 
     class Config:
         env_file = ".env"

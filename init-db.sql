@@ -93,4 +93,4 @@ BEGIN
 END
 $$;
 
-CALL create_public_ru_table('ru');
+CALL create_public_ru_table('rep');

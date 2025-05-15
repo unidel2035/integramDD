@@ -1,19 +1,37 @@
 from fastapi import Header, HTTPException, status
 
+
 async def verify_token(authorization: str = Header(...)) -> dict:
+    """Validates the Authorization header using a simple bearer token check.
+
+    This is a stub implementation meant to be replaced by proper JWT verification (e.g., via Keycloak).
+
+    Args:
+        authorization (str): The 'Authorization' header from the request.
+
+    Raises:
+        HTTPException: If the header is missing or invalid.
+        HTTPException: If the token is not recognized.
+
+    Returns:
+        dict: A dictionary representing the authenticated user's identity.
+    """
     scheme, _, token = authorization.partition(" ")
 
     if scheme.lower() != "bearer" or not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid Authorization header"
+            detail="Missing or invalid Authorization header",
         )
 
-    # Заглушка: валидный токен — это "super-secret-token"
-    if token != "super-secret-token":
+    if token != "secret-token":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid token"
+            detail="Invalid token",
         )
 
-    return {"user_id": 1, "username": "admin", "role": "admin"}
+    return {
+        "user_id": 1,
+        "username": "admin",
+        "role": "admin",
+    }

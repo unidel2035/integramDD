@@ -12,18 +12,18 @@ SELECT
     ref_reqs.val AS ref_val,
     req_defaults.val AS default_val,
     ARRAY_AGG(DISTINCT CONCAT(mod_defs.val, ' ', mods.val)) FILTER (WHERE mods.t != 0) AS mods
-FROM ru obj
-    LEFT JOIN (ru reqs CROSS JOIN ru req_defs)
+FROM rep obj
+    LEFT JOIN (rep reqs CROSS JOIN rep req_defs)
         ON reqs.up = obj.id AND req_defs.id = reqs.t AND req_defs.t != 0
-    LEFT JOIN ru req_defaults
+    LEFT JOIN rep req_defaults
         ON req_defaults.up = reqs.id AND req_defaults.t = 0
-    LEFT JOIN ru ref_reqs
+    LEFT JOIN rep ref_reqs
         ON ref_reqs.id = req_defs.t AND ref_reqs.t != ref_reqs.id
-    LEFT JOIN ru refs
+    LEFT JOIN rep refs
         ON refs.id = obj.t AND refs.t != refs.id
-    LEFT JOIN (ru obj_mods CROSS JOIN ru obj_mod_defs)
+    LEFT JOIN (rep obj_mods CROSS JOIN rep obj_mod_defs)
         ON obj_mods.up = obj.id AND obj_mod_defs.id = obj_mods.t AND obj_mod_defs.t = 0
-    LEFT JOIN (ru mods CROSS JOIN ru mod_defs)
+    LEFT JOIN (rep mods CROSS JOIN rep mod_defs)
         ON mods.up = reqs.id AND mod_defs.id = mods.t AND obj_mod_defs.t = 0
 WHERE obj.up = 0 AND obj.id != obj.t AND obj.t != 0
     {filter_clause}

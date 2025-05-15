@@ -1,0 +1,75 @@
+"""Pydantic models for representing term metadata and its requisites."""
+
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, model_validator
+
+
+class TermRequisite(BaseModel):
+    """Represents a single requisite (field/attribute) of a term."""
+
+    num: Optional[int]
+    id: str 
+    val: Optional[str]  
+    type: Optional[str]  
+    attrs: Optional[str] = None  
+    ref_id: Optional[str] = None  
+    ref: Optional[str] = None  
+    default_val: Optional[str] = None  
+    mods: Optional[List[str]] = None  
+    arr_id: Optional[str] = None  
+
+
+class TermMetadata(BaseModel):
+    """Represents metadata for a term, including its requisites."""
+
+    id: int  
+    up: int  
+    type: int  
+    val: str  
+    unique: Optional[int] = 1  
+    reqs: List[TermRequisite] = []  
+    
+
+class TermCreateRequest(BaseModel):
+    """Request model for creating a new term.
+
+    Attributes:
+        val: Name of the term to be created.
+        t: Base type ID for the term.
+        mods: Optional dictionary of modifiers (e.g., ALIAS, UNIQUE).
+    """
+    val: str = Field(..., description="Name of the term to create")
+    t: int = Field(..., description="Base type ID of the term")
+    mods: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Optional modifiers for the term (e.g. ALIAS, UNIQUE)"
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_fields(cls, values):
+        val = values.get("val")
+        t = values.get("t")
+
+        if not val or not val.strip():
+            raise ValueError("Term name (val) must not be empty")
+
+        if not isinstance(t, int) or t <= 0:
+            raise ValueError("Invalid base type (t). Must be a positive integer")
+
+        return values
+
+
+class TermCreateResponse(BaseModel):
+    """Response model for a created term.
+
+    Attributes:
+        id: ID of the newly created (or existing) term.
+        t: Base type ID of the term.
+        val: Name of the term.
+        warnings: Warning message if the term already existed.
+    """
+    id: int
+    t: int
+    val: str
+    warnings: Optional[str] = None

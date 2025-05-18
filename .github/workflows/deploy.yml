@@ -32,12 +32,6 @@ jobs:
   deploy:
     # needs: test
     runs-on: ubuntu-latest
-    env:
-      DB_HOST: 
-      DB_PORT: 
-      DB_NAME: 
-      DB_USER: 
-      DB_PASSWORD: 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3

@@ -30,7 +30,7 @@ def build_terms_from_rows(rows: List[Dict]) -> List[TermMetadata]:
                 "up": row.get("up", 0),
                 "type": row["base"],
                 "val": row["obj"],
-                "unique": row.get("uniq", 1),
+                "unique": 1 if row.get("uniq") else 0,
                 "reqs": []  # Placeholder, will be filled later
             }
 
@@ -38,19 +38,20 @@ def build_terms_from_rows(rows: List[Dict]) -> List[TermMetadata]:
         if row.get("req_id"):
             req = TermRequisite(
                 num=row.get("ord"),
-                id=row["req_id"],
+                id=str(row["req_id"]),
                 val=row.get("req_val"),
-                type=row.get("req_t"),
+                type=str(row.get("req_t")),
                 attrs=row.get("attrs"),
                 ref_id=row.get("ref_id"),
                 ref=row.get("ref_val"),
                 default_val=row.get("default_val"),
                 mods=row.get("mods"),
             )
+            
             reqs_by_term_id[term_id].append(req)
 
     # Combine base term info with its requisites
     return [
-        TermMetadata(**{**term_data, "reqs": reqs_by_term_id[term_id]})
+        TermMetadata(**{**term_data, "reqs": reqs_by_term_id[term_id]}).model_dump(exclude_none=True)
         for term_id, term_data in terms_by_id.items()
     ]

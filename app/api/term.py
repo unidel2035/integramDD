@@ -1,24 +1,28 @@
 from fastapi import APIRouter, Path, HTTPException, Depends, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List
 import json
 
-from app.db.db import engine, load_sql
+from app.db.db import engine, load_sql, validate_table_exists
 from app.models.term import TermMetadata, TermCreateRequest, TermCreateResponse
 from app.services.term_builder import build_terms_from_rows
 from app.auth.auth import verify_token
+from app.logger import db_logger
 
 
 router = APIRouter()
 
 
 @router.get(
-    "/term",
+    "/{db_name}/term",
     response_model=List[TermMetadata],
     dependencies=[Depends(verify_token)],
 )
-async def get_all_terms():
+async def get_all_terms(
+    db_name: str = Depends(validate_table_exists),
+):
     """Fetches all metadata terms from the database.
 
     This endpoint returns a list of all defined terms and their metadata.
@@ -27,7 +31,7 @@ async def get_all_terms():
     Returns:
         List[TermMetadata]: A list of term metadata entries.
     """
-    sql = load_sql("get_term.sql", filter_clause="")
+    sql = load_sql("get_term.sql", db=db_name, filter_clause="")
 
     async with engine.connect() as conn:
         result = await conn.execute(text(sql))
@@ -37,11 +41,14 @@ async def get_all_terms():
 
 
 @router.get(
-    "/term/{term_id}",
+    "/{db_name}/term/{term_id}",
     response_model=TermMetadata,
     dependencies=[Depends(verify_token)],
 )
-async def get_term_by_id(term_id: int = Path(..., description="Term ID to fetch")):
+async def get_term_by_id(
+    term_id: int = Path(..., description="Term ID to fetch"),
+    db_name: str = Depends(validate_table_exists),
+):
     """Fetches metadata for a specific term by its ID.
 
     This endpoint retrieves detailed metadata for a single term,
@@ -57,7 +64,7 @@ async def get_term_by_id(term_id: int = Path(..., description="Term ID to fetch"
     Raises:
         HTTPException: If the term with given ID does not exist.
     """
-    sql = load_sql("get_term.sql", filter_clause="AND obj.id = :term_id")
+    sql = load_sql("get_term.sql", db=db_name, filter_clause="AND obj.id = :term_id")
 
     async with engine.connect() as conn:
         result = await conn.execute(text(sql), {"term_id": term_id})
@@ -66,12 +73,13 @@ async def get_term_by_id(term_id: int = Path(..., description="Term ID to fetch"
     if not rows:
         raise HTTPException(status_code=404, detail=f"Term {term_id} not found")
 
-    return build_terms_from_rows(rows)[0]
+    return JSONResponse(build_terms_from_rows(rows)[0])
 
 
-
-@router.post("/term", response_model=TermCreateResponse, dependencies=[Depends(verify_token)])
-async def create_term(payload: TermCreateRequest) -> TermCreateResponse:
+@router.post(
+    "/{db_name}/term", response_model=TermCreateResponse, dependencies=[Depends(verify_token)]
+)
+async def create_term(payload: TermCreateRequest, db_name: str = Depends(validate_table_exists),) -> TermCreateResponse:
     """Create a new term or return an existing one if it already exists.
 
     Executes the `post_terms` stored procedure with provided parameters.
@@ -85,24 +93,28 @@ async def create_term(payload: TermCreateRequest) -> TermCreateResponse:
     Raises:
         HTTPException: 400 if response is unexpected, 500 if DB call fails.
     """
-    query = text("""
+    query = text(
+        """
         SELECT * FROM post_terms(:db, :value, :base, :mods)
-    """)
+    """
+    )
 
     try:
         async with engine.begin() as conn:
-            result = await conn.execute(query, {
-                "db": "rep",
-                "value": payload.val,
-                "base": payload.t,
-                "mods": json.dumps(payload.mods or {})
-            })
+            result = await conn.execute(
+                query,
+                {
+                    "db": db_name,
+                    "value": payload.val,
+                    "base": payload.t,
+                    "mods": json.dumps(payload.mods or {}),
+                },
+            )
             row = result.fetchone()
 
         if not row:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Empty response from stored procedure."
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
         term_id, result_flag = row
@@ -112,19 +124,17 @@ async def create_term(payload: TermCreateRequest) -> TermCreateResponse:
 
         if result_flag == "warn_term_exists":
             return TermCreateResponse(
-                id=term_id,
-                t=payload.t,
-                val=payload.val,
-                warnings="Term already exists"
+                id=term_id, t=payload.t, val=payload.val, warnings="Term already exists"
             )
 
+        db_logger.exception(f"Unexpected result from post_terms: {result_flag}")
+
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unexpected result: '{result_flag}'"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
     except SQLAlchemyError as _e:
+        db_logger.exception(f"Database error while executing post_terms: {_e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error while executing post_terms. {_e}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

@@ -23,7 +23,7 @@ BEGIN
     );
     
     EXECUTE format(
-        'SELECT setval(''%I_id_seq'', 100);', dbname
+        'SELECT setval(''%I_id_seq'', 110);', dbname
     );
     
     EXECUTE format(
@@ -88,7 +88,12 @@ BEGIN
             (97, 0, 11, ''Интерактивный''),
             (98, 0, 3, ''URL''),
             (99, 0, 11, ''EXECUTE''),
-            (100, 0, 12, ''Alias'');', dbname
+            (100, 64, 65, ''1''),
+            (101, 64, 66, ''2''),
+            (102, 64, 67, ''3''),
+            (103, 64, 68, ''4''),
+            (104, 64, 70, ''5''),
+            (105, 0, 12, ''Alias'');', dbname
     );
 END
 $$;

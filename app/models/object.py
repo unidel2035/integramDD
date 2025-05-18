@@ -1,0 +1,65 @@
+from pydantic import BaseModel, Field, model_validator
+from typing import Dict, Any, Optional
+
+
+class ObjectCreateRequest(BaseModel):
+    """
+    Request model for creating a new object via the /object endpoint.
+
+    Attributes:
+        id (int): Type ID of the object (term ID).
+        up (int): Parent object ID. For root-level objects, this should be 1.
+        attrs (Dict[str, Any]): Dictionary of object attributes. Must include 't{id}' (e.g., 't32').
+                                Keys may also use term names instead of t-codes.
+
+    Validation:
+        Ensures that the key 't{id}' exists in attrs and has a non-empty value,
+        since it represents the object's main value and is required by the post_objects() SQL procedure.
+    """
+
+    id: int = Field(..., description="Type ID of the object to create")
+    up: int = Field(..., description="Parent object ID (1 for root)")
+    attrs: Dict[str, Any] = Field(..., description="Attributes of the object including 't{id}' or term names")
+
+    @model_validator(mode="after")
+    def validate_attrs(self) -> "ObjectCreateRequest":
+        """
+        Validates that:
+        - `attrs` contains a key of the form 't{id}' where `id` is the object type.
+        - This key has a non-empty value (e.g., not '', None, or whitespace-only string).
+
+        Returns:
+            ObjectCreateRequest: The validated object.
+
+        Raises:
+            ValueError: If 't{id}' is missing or has an empty value.
+        """
+        object_key = f"t{self.id}"
+
+        if object_key not in self.attrs:
+            raise ValueError(f"Missing required key '{object_key}' in 'attrs'")
+
+        value = self.attrs[object_key]
+        if value is None or (isinstance(value, str) and not value.strip()):
+            raise ValueError(f"Empty value for required attribute '{object_key}' in 'attrs'")
+
+        return self
+
+
+class ObjectCreateResponse(BaseModel):
+    """
+    Response model for successful object creation via the /object endpoint.
+
+    Attributes:
+        id (int): ID of the created object.
+        up (int): ID of the parent object.
+        t (int): Type ID (term) of the created object.
+        val (str): The main value assigned to the object (e.g., its name or label).
+        warning (Optional[str]): Optional warning message (e.g., if object already existed).
+    """
+
+    id: int
+    up: int
+    t: int
+    val: str
+    warning: Optional[str] = None

@@ -26,7 +26,7 @@ class TermMetadata(BaseModel):
     up: int  
     type: int  
     val: str  
-    unique: Optional[int] = 1  
+    unique: Optional[int] = 0  
     reqs: List[TermRequisite] = []  
     
 

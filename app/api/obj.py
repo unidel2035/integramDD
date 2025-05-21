@@ -13,7 +13,7 @@ router = APIRouter()
 
 
 @router.post(
-    "/{db_name}/object", response_model=ObjectCreateResponse, dependencies=[Depends(verify_token)]
+    "/{db_name}/objects", response_model=ObjectCreateResponse, dependencies=[Depends(verify_token)]
 )
 async def create_object(payload: ObjectCreateRequest,
                         db_name: str = Depends(validate_table_exists),) -> ObjectCreateResponse:

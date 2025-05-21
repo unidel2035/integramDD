@@ -8,27 +8,28 @@ class TermRequisite(BaseModel):
     """Represents a single requisite (field/attribute) of a term."""
 
     num: Optional[int]
-    id: str 
-    val: Optional[str]  
-    type: Optional[str]  
-    attrs: Optional[str] = None  
-    ref_id: Optional[str] = None  
-    ref: Optional[str] = None  
-    default_val: Optional[str] = None  
-    mods: Optional[List[str]] = None  
-    arr_id: Optional[str] = None  
+    id: str
+    val: Optional[str]
+    type: Optional[str]
+    attrs: Optional[str] = None
+    ref_id: Optional[str] = None
+    ref: Optional[str] = None
+    default_val: Optional[str] = None
+    mods: Optional[List[str]] = []
+    arr_id: Optional[str] = None
 
 
 class TermMetadata(BaseModel):
     """Represents metadata for a term, including its requisites."""
 
-    id: int  
-    up: int  
-    type: int  
-    val: str  
-    unique: Optional[int] = 0  
-    reqs: List[TermRequisite] = []  
-    
+    id: int
+    up: int
+    type: int
+    val: str
+    unique: Optional[int] = 0
+    mods: Optional[List[str]] = []
+    reqs: List[TermRequisite] = []
+
 
 class TermCreateRequest(BaseModel):
     """Request model for creating a new term.
@@ -36,26 +37,29 @@ class TermCreateRequest(BaseModel):
     Attributes:
         val: Name of the term to be created.
         t: Base type ID for the term.
-        mods: Optional dictionary of modifiers (e.g., ALIAS, UNIQUE).
+        mods: All other fields passed in the request.
     """
+
     val: str = Field(..., description="Name of the term to create")
     t: int = Field(..., description="Base type ID of the term")
-    mods: Optional[Dict[str, Any]] = Field(
+    mods: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Optional modifiers for the term (e.g. ALIAS, UNIQUE)"
+        description="Optional modifiers for the term (e.g. ALIAS, UNIQUE)",
     )
 
     @model_validator(mode="before")
     @classmethod
-    def validate_fields(cls, values):
+    def absorb_extra_into_mods(cls, values: dict) -> dict:
         val = values.get("val")
         t = values.get("t")
 
         if not val or not val.strip():
             raise ValueError("Term name (val) must not be empty")
-
         if not isinstance(t, int) or t <= 0:
             raise ValueError("Invalid base type (t). Must be a positive integer")
+
+        mods = {k: v for k, v in values.items() if k not in {"val", "t"}}
+        values["mods"] = mods
 
         return values
 
@@ -69,6 +73,7 @@ class TermCreateResponse(BaseModel):
         val: Name of the term.
         warnings: Warning message if the term already existed.
     """
+
     id: int
     t: int
     val: str

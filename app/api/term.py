@@ -16,7 +16,7 @@ router = APIRouter()
 
 
 @router.get(
-    "/{db_name}/term",
+    "/{db_name}/metadata",
     response_model=List[TermMetadata],
     dependencies=[Depends(verify_token)],
 )
@@ -37,11 +37,11 @@ async def get_all_terms(
         result = await conn.execute(text(sql))
         rows = result.mappings().all()
 
-    return build_terms_from_rows(rows)
+    return JSONResponse(build_terms_from_rows(rows))
 
 
 @router.get(
-    "/{db_name}/term/{term_id}",
+    "/{db_name}/metadata/{term_id}",
     response_model=TermMetadata,
     dependencies=[Depends(verify_token)],
 )
@@ -77,7 +77,7 @@ async def get_term_by_id(
 
 
 @router.post(
-    "/{db_name}/term", response_model=TermCreateResponse, dependencies=[Depends(verify_token)]
+    "/{db_name}/metadata", response_model=TermCreateResponse, dependencies=[Depends(verify_token)]
 )
 async def create_term(payload: TermCreateRequest, db_name: str = Depends(validate_table_exists),) -> TermCreateResponse:
     """Create a new term or return an existing one if it already exists.

@@ -32,10 +32,7 @@ def build_terms_from_rows(rows: List[Dict]) -> List[TermMetadata]:
                 "val": row["obj"],
                 "unique": 1 if row.get("uniq") else 0,
                 "reqs": [], # Placeholder for requisites
-                "mods": [
-                    mod.encode("utf-8").decode("unicode_escape")
-                    for mod in (row.get("obj_mods", []) or [])
-                ],
+                "mods": row.get("obj_mods", []) or [],
             }
 
         # If a requisite is present in the row, build it and group by term ID

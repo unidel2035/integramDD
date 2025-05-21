@@ -107,7 +107,7 @@ async def create_term(payload: TermCreateRequest, db_name: str = Depends(validat
                     "db": db_name,
                     "value": payload.val,
                     "base": payload.t,
-                    "mods": json.dumps(payload.mods or {}),
+                    "mods": json.dumps(payload.mods or {}, ensure_ascii=False),
                 },
             )
             row = result.fetchone()

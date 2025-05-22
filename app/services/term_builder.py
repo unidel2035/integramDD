@@ -19,21 +19,26 @@ def build_terms_from_rows(rows: List[Dict]) -> List[TermMetadata]:
     """
     terms_by_id: Dict[int, Dict] = {}
     reqs_by_term_id: Dict[int, List[TermRequisite]] = defaultdict(list)
-
     for row in rows:
         term_id = row["id"]
+        
 
         # Initialize term metadata if not already stored
         if term_id not in terms_by_id:
+            obj_mods = row.get("obj_mods", []) or []
+
+            is_unique = any(str(mod).split(" ")[0] == "UNIQUE" for mod in obj_mods)
+
             terms_by_id[term_id] = {
                 "id": term_id,
                 "up": row.get("up", 0),
                 "type": row["base"],
                 "val": row["obj"],
-                "unique": 1 if row.get("uniq") else 0,
-                "reqs": [], # Placeholder for requisites
-                "mods": row.get("obj_mods", []) or [],
+                "unique": int(is_unique),
+                "reqs": [],  # Placeholder for requisites
+                "mods": obj_mods,
             }
+
 
         # If a requisite is present in the row, build it and group by term ID
         if row.get("req_id"):

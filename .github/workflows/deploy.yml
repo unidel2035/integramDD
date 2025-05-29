@@ -51,6 +51,10 @@ jobs:
             git pull origin main
 
             docker compose down -v
+            docker image prune -a -f
+            docker container prune -f
+            docker volume prune -f
+            docker builder prune -f
             export DB_HOST=${{ secrets.DB_HOST }}
             export DB_PORT=${{ secrets.DB_PORT }}
             export DB_NAME=${{ secrets.DB_NAME }}

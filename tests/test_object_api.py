@@ -6,8 +6,8 @@ from fastapi import status
 
 
 from app.main import app
-from app.api import obj
-from app.models.object import ObjectCreateRequest
+from app.api import objects
+from app.models.objects import ObjectCreateRequest
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def auth_headers():
 
 @pytest.mark.asyncio
 async def test_post_object_mocked(monkeypatch, auth_headers):
-    monkeypatch.setattr(obj, "verify_token", AsyncMock(return_value={"user_id": 1, "role": "admin"}))
+    monkeypatch.setattr(objects, "verify_token", AsyncMock(return_value={"user_id": 1, "role": "admin"}))
 
     # Mock DB result
     mock_result = MagicMock()
@@ -29,7 +29,7 @@ async def test_post_object_mocked(monkeypatch, auth_headers):
     mock_engine = MagicMock()
     mock_engine.begin.return_value = mock_conn
 
-    monkeypatch.setattr(obj, "engine", mock_engine)
+    monkeypatch.setattr(objects, "engine", mock_engine)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

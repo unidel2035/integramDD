@@ -77,7 +77,6 @@ SELECT post_references('rep', 43);
 -- Change the term name or base type
 CREATE OR REPLACE FUNCTION public.patch_terms(db text, term_id int8, value text, base int8, OUT exid int8, OUT res TEXT)
 AS $$
-DECLARE exid int8;
 BEGIN
 	EXECUTE format('SELECT obj.id FROM %s obj, %s base WHERE obj.val ILIKE ''%s'' AND obj.up=0 AND base.t=obj.t AND base.id=base.t AND obj.id!=''%s'''
 					, db, db, replace(value, '''', ''''''), term_id) into exid;

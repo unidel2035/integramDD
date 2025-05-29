@@ -5,7 +5,7 @@ from httpx import AsyncClient, ASGITransport
 from httpx import post as httpx_post
 
 from app.main import app
-from app.api import term
+from app.api import terms
 
 
 @pytest.fixture
@@ -56,9 +56,9 @@ def setup_engine_mock(return_value):
 @pytest.mark.asyncio
 async def test_get_all_terms(monkeypatch, auth_headers):
     """Tests the GET /term endpoint with mocked DB and auth."""
-    monkeypatch.setattr(term, "verify_token", AsyncMock(
+    monkeypatch.setattr(terms, "verify_token", AsyncMock(
         return_value={"user_id": 1, "role": "admin"}))
-    monkeypatch.setattr(term, "engine", setup_engine_mock([MOCKED_TERM]))
+    monkeypatch.setattr(terms, "engine", setup_engine_mock([MOCKED_TERM]))
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -72,9 +72,9 @@ async def test_get_all_terms(monkeypatch, auth_headers):
 @pytest.mark.asyncio
 async def test_get_term_by_id(monkeypatch, auth_headers):
     """Tests the GET /term/{term_id} endpoint with valid mocked result."""
-    monkeypatch.setattr(term, "verify_token", AsyncMock(
+    monkeypatch.setattr(terms, "verify_token", AsyncMock(
         return_value={"user_id": 1, "role": "admin"}))
-    monkeypatch.setattr(term, "engine", setup_engine_mock([MOCKED_TERM]))
+    monkeypatch.setattr(terms, "engine", setup_engine_mock([MOCKED_TERM]))
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -87,9 +87,9 @@ async def test_get_term_by_id(monkeypatch, auth_headers):
 @pytest.mark.asyncio
 async def test_get_term_by_id_not_found(monkeypatch, auth_headers):
     """Tests the GET /term/{term_id} endpoint with no matching term in DB."""
-    monkeypatch.setattr(term, "verify_token", AsyncMock(
+    monkeypatch.setattr(terms, "verify_token", AsyncMock(
         return_value={"user_id": 1, "role": "admin"}))
-    monkeypatch.setattr(term, "engine", setup_engine_mock([]))
+    monkeypatch.setattr(terms, "engine", setup_engine_mock([]))
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -119,7 +119,7 @@ def test_create_term_real_server(payload):
     
 @pytest.mark.asyncio
 async def test_post_term_mocked(monkeypatch, auth_headers):
-    monkeypatch.setattr(term, "verify_token", AsyncMock(return_value={"user_id": 1, "role": "admin"}))
+    monkeypatch.setattr(terms, "verify_token", AsyncMock(return_value={"user_id": 1, "role": "admin"}))
     mock_result = MagicMock()
     mock_result.fetchone.return_value = (123, "1")
 
@@ -129,7 +129,7 @@ async def test_post_term_mocked(monkeypatch, auth_headers):
     mock_engine = MagicMock()
     mock_engine.begin.return_value = mock_conn_ctx
 
-    monkeypatch.setattr(term, "engine", mock_engine)
+    monkeypatch.setattr(terms, "engine", mock_engine)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

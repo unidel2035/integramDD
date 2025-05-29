@@ -2,7 +2,7 @@
 
 from typing import List, Dict
 from collections import defaultdict
-from app.models.term import TermMetadata, TermRequisite
+from app.models.terms import TermMetadata, TermRequisite
 
 
 def build_terms_from_rows(rows: List[Dict]) -> List[TermMetadata]:

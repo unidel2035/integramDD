@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     DB_NAME: str
     DB_USER: str
     DB_PASSWORD: str
-
+    BOOLEAN_MODIFIERS: list[str] = ["NOT NULL", "ORDER", "MULTIPLE", "UNIQUE"]
     SQL_DIR: Path = Path(__file__).parent / "sql"
 
     class Config:

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 from typing import Dict, Any, Optional
 
 
@@ -63,3 +63,25 @@ class ObjectCreateResponse(BaseModel):
     t: int
     val: str
     warning: Optional[str] = None
+
+
+class PatchObjectRequest(BaseModel):
+    """
+    Arbitrary JSON map of attributes, where keys are of the form 't{id}' and values are strings.
+    Example: {"t101": "value", "t102": "another"}
+    """
+    model_config = ConfigDict(extra="allow")
+    
+    def get_payload(self) -> Dict[str, Any]:
+        return self.__pydantic_extra__ if hasattr(self, '__pydantic_extra__') and self.__pydantic_extra__ else {}
+
+
+class PatchObjectResponse(BaseModel):
+    id: int
+    val: Optional[str] = None
+    error: Optional[str] = None
+    warnings: Optional[str] = None
+    
+
+class DeleteObjectResponse(BaseModel):
+    id: int = Field(..., description="ID of the deleted object")

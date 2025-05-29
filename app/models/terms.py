@@ -78,3 +78,32 @@ class TermCreateResponse(BaseModel):
     t: int
     val: str
     warnings: Optional[str] = None
+
+
+class Term(BaseModel):
+    """Represents a top-level term that is not referenced by any other object."""
+    id: int
+    val: str
+    base: int  # corresponds to obj.t
+
+
+class PatchTermRequest(BaseModel):
+    val: str = Field(..., description="New name for the term")
+    t: int = Field(..., description="New base type ID")
+
+    class Config:
+        extra = "allow"
+
+
+class PatchTermResponse(BaseModel):
+    id: Optional[int] = Field(None, description="ID of the updated term")
+    t: Optional[int] = Field(None, description="Updated base type")
+    val: Optional[str] = Field(None, description="Updated name")
+    errors: Optional[str] = None
+    exists: Optional[int] = None
+    
+
+class DeleteTermResponse(BaseModel):
+    id: Optional[int] = Field(None, description="ID of the deleted term")
+    deleted_count: Optional[int] = Field(None, description="Number of terms deleted (including children)")
+    error: Optional[str] = Field(None, description="Error message, if any")

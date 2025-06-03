@@ -1,7 +1,11 @@
-from fastapi import Header, HTTPException, status
+from fastapi import Header, HTTPException, status, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+security = HTTPBearer()
 
-async def verify_token(authorization: str = Header(...)) -> dict:
+def verify_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
     """Validates the Authorization header using a simple bearer token check.
 
     This is a stub implementation meant to be replaced by proper JWT verification (e.g., via Keycloak).
@@ -16,7 +20,8 @@ async def verify_token(authorization: str = Header(...)) -> dict:
     Returns:
         dict: A dictionary representing the authenticated user's identity.
     """
-    scheme, _, token = authorization.partition(" ")
+    token = credentials.credentials
+    scheme = credentials.scheme if credentials else ""
 
     if scheme.lower() != "bearer" or not token:
         raise HTTPException(

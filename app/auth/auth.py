@@ -1,7 +1,11 @@
 from fastapi import Header, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-security = HTTPBearer()
+class CustomBearer(HTTPBearer):
+    def __init__(self):
+        super().__init__(scheme_name="BearerAuth") 
+
+security = CustomBearer()
 
 def verify_token(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -22,12 +26,6 @@ def verify_token(
     """
     token = credentials.credentials
     scheme = credentials.scheme if credentials else ""
-
-    if scheme.lower() != "bearer" or not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid Authorization header",
-        )
 
     if token != "secret-token":
         raise HTTPException(

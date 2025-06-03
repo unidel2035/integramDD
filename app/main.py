@@ -6,7 +6,6 @@ from fastapi.openapi.utils import get_openapi
 app = FastAPI()
 security = HTTPBearer()
 
-# Переопределяем openapi-схему
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -16,14 +15,17 @@ def custom_openapi():
         description="API for Integram",
         routes=app.routes,
     )
+
     openapi_schema["components"]["securitySchemes"] = {
         "BearerAuth": {
             "type": "http",
             "scheme": "bearer",
-            "bearerFormat": "JWT",
+            "bearerFormat": "JWT"
         }
     }
+
     openapi_schema["security"] = [{"BearerAuth": []}]
+
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 

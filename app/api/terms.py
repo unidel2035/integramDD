@@ -13,7 +13,6 @@ from app.logger import db_logger
 from app.settings import settings
 
 
-
 router = APIRouter()
 
 
@@ -112,6 +111,29 @@ async def get_metadata_by_id(
     return JSONResponse(build_terms_from_rows(rows)[0])
 
 
+@router.get(
+    "/{db_name}/metadata",
+    response_model=List[TermMetadata],
+    dependencies=[Depends(verify_token)],
+)
+async def get_all_metadata(db_name: str = Depends(validate_table_exists)):
+    """Fetches all metadata terms from the database.
+
+    This endpoint returns a list of all defined terms and their metadata.
+    Authorization is required.
+
+    Returns:
+        List[TermMetadata]: A list of term metadata entries.
+    """
+    sql = load_sql("get_metadata.sql", db=db_name, filter_clause="")
+
+    async with engine.connect() as conn:
+        result = await conn.execute(text(sql))
+        rows = result.mappings().all()
+
+    return JSONResponse(build_terms_from_rows(rows))
+
+
 @router.post(
     "/{db_name}/terms",
     response_model=TermCreateResponse,
@@ -148,7 +170,9 @@ async def create_term(
                     "db": db_name,
                     "value": payload.val,
                     "base": payload.t,
-                    "mods": json.dumps(payload.mods or {}, ensure_ascii=False),
+                    "mods": json.dumps(
+                        payload.mods.get("mods") or {}, ensure_ascii=False
+                    ),
                 },
             )
             row = result.fetchone()
@@ -257,6 +281,7 @@ async def patch_term(
         )
     )
 
+
 @router.delete(
     "/{db_name}/terms/{term_id}",
     response_model=DeleteTermResponse,
@@ -273,7 +298,7 @@ async def delete_term(
     """
     async with engine.begin() as conn:  # type: AsyncConnection
 
-        #1
+        # 1
         sql = text("SELECT delete_terms(:db, :term_id)")
         result = await conn.execute(sql, {"db": db_name, "term_id": term_id})
         res = result.scalar_one_or_none()
@@ -283,15 +308,19 @@ async def delete_term(
 
         if res == "err_term_is_in_use":
             return JSONResponse(
-                DeleteTermResponse(error="There are objects of this type").model_dump(exclude_none=True)
+                DeleteTermResponse(error="There are objects of this type").model_dump(
+                    exclude_none=True
+                )
             )
 
         if res is None or res != "1":
             return JSONResponse(
-                DeleteTermResponse(error="Unknown error during deletion").model_dump(exclude_none=True)
+                DeleteTermResponse(error="Unknown error during deletion").model_dump(
+                    exclude_none=True
+                )
             )
 
-        #2
+        # 2
         subs = []
         queue = [term_id]
         idx = 0
@@ -306,7 +335,7 @@ async def delete_term(
             subs.extend(ids)
             idx += 1
 
-        #3
+        # 3
         if subs:
             stmt = text(f"DELETE FROM {db_name} WHERE id IN :ids").bindparams(
                 bindparam("ids", expanding=True)
@@ -314,5 +343,7 @@ async def delete_term(
             await conn.execute(stmt, {"ids": subs})
 
         return JSONResponse(
-            DeleteTermResponse(id=term_id, deleted_count=1 + len(subs)).model_dump(exclude_none=True)
+            DeleteTermResponse(id=term_id, deleted_count=1 + len(subs)).model_dump(
+                exclude_none=True
+            )
         )

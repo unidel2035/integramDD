@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, model_validator, ConfigDict
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Union
 
 
 class ObjectCreateRequest(BaseModel):
@@ -85,3 +85,25 @@ class PatchObjectResponse(BaseModel):
 
 class DeleteObjectResponse(BaseModel):
     id: int = Field(..., description="ID of the deleted object")
+    
+class HeaderField(BaseModel):
+    t: int
+    name: str
+    base: int
+    ref: Optional[int] = None
+    modifiers: List[str] = []
+    original_name: Optional[str] = None
+    array: Optional[int] = None
+
+class ObjectRow(BaseModel):
+    id: int
+    up: int
+    val: str
+    reqs: List[Union[str, Dict[str, str]]] = []
+
+class TermObjectsResponse(BaseModel):
+    t: int
+    name: str
+    base: int
+    header: List[HeaderField]
+    objects: List[ObjectRow]

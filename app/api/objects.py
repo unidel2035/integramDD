@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Path
+from fastapi import APIRouter, HTTPException, status, Depends, Path, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -6,11 +6,7 @@ import json
 
 from app.auth.auth import verify_token
 from app.db.db import engine, validate_table_exists, load_sql
-from app.models.objects import (ObjectCreateRequest,
-                                ObjectCreateResponse,
-                                PatchObjectRequest,
-                                PatchObjectResponse,
-                                DeleteObjectResponse)
+from app.models.objects import *
 from app.logger import db_logger
 
 
@@ -203,7 +199,7 @@ async def delete_object(
     
 
 @router.get(
-    "/{db_name}/objects/{object_id}",
+    "/{db_name}/object/{object_id}",
     dependencies=[Depends(verify_token)]
 )
 async def get_object(
@@ -259,3 +255,85 @@ async def get_object(
 
         obj["reqs"] = reqs
         return JSONResponse(obj)
+    
+
+@router.get("/{db_name}/objects/{term_id}", response_model=TermObjectsResponse)
+async def get_term_objects(
+    db_name: str = Path(..., description="Database name"),
+    term_id: int = Path(..., description="ID of the term"),
+    parent_id: int = Query(1, alias="up", description="Parent ID"),
+):
+    """_summary_
+
+    Args:
+        db_name (str, optional): _description_. Defaults to Path(..., description="Database name").
+        term_id (int, optional): _description_. Defaults to Path(..., description="ID of the term").
+        parent_id (int, optional): _description_. Defaults to Query(1, alias="up", description="Parent ID").
+
+    Raises:
+        HTTPException: _description_
+
+    Returns:
+        _type_: _description_
+    """
+    async with engine.begin() as conn:
+        meta_sql = text(load_sql("get_term_metadata.sql", db=db_name, term_id=term_id))
+        objs_sql = text(load_sql("get_term_objects.sql", db=db_name, term_id=term_id, parent_id=parent_id))
+        reqs_sql = text(load_sql("get_object_reqs.sql", db=db_name, term_id=term_id, parent_id=parent_id))
+        refs_sql = text(load_sql("get_object_refs.sql", db=db_name, term_id=term_id, parent_id=parent_id))
+        arrays_sql = text(load_sql("get_object_arrays.sql", db=db_name, term_id=term_id, parent_id=parent_id))
+
+        meta_rows = await conn.execute(meta_sql)
+        object_rows = await conn.execute(objs_sql)
+        req_vals = await conn.execute(reqs_sql)
+        ref_vals = await conn.execute(refs_sql)
+        arr_vals = await conn.execute(arrays_sql)
+
+        meta_rows = meta_rows.fetchall()
+        object_rows = object_rows.fetchall()
+        req_vals = req_vals.fetchall()
+        ref_vals = ref_vals.fetchall()
+        arr_vals = arr_vals.fetchall()
+
+    if not meta_rows:
+        raise HTTPException(status_code=404, detail="Term not found")
+
+    header_map = {}
+    header = []
+    for row in meta_rows:
+        if row.req_id not in header_map:
+            f = HeaderField(
+                t=row.req_t,
+                name=row.req_val,
+                base=row.ref_base or row.req_t,
+                ref=row.ref_id,
+                modifiers=[m.encode("utf-8").decode("unicode_escape") for m in (row.mods or [])],
+                original_name=row.ref_val,
+            )
+            header.append(f)
+            header_map[row.req_t] = f
+
+    ref_dict = {(r.object_id, r.req_t): {str(r.ref_id): r.ref_val} for r in ref_vals}
+    arr_dict = {(r.object_id, r.req_t): f"({r.count})" for r in arr_vals}
+    val_dict = {(r.object_id, r.req_t): r.value for r in req_vals}
+
+    objects = []
+    for obj in object_rows:
+        row = []
+        for h in header:
+            key = (obj.id, h.t)
+            row.append(
+                ref_dict.get(key)
+                or arr_dict.get(key)
+                or val_dict.get(key)
+                or ""
+            )
+        objects.append(ObjectRow(id=obj.id, up=obj.up, val=obj.val, reqs=row))
+
+    return JSONResponse(TermObjectsResponse(
+        t=meta_rows[0].id,
+        name=meta_rows[0].obj,
+        base=meta_rows[0].base,
+        header=header,
+        objects=objects,
+    ).model_dump(exclude_none=True))

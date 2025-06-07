@@ -20,7 +20,8 @@ def custom_openapi():
         "BearerAuth": {
             "type": "http",
             "scheme": "bearer",
-            "bearerFormat": "JWT"
+            "bearerFormat": "JWT",
+            "description": "Enter your JWT token like this (without Bearer): your_token"
         }
     }
 

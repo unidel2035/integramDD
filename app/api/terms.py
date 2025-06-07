@@ -26,11 +26,11 @@ async def get_all_terms(
 ):
     """Fetches all metadata terms from the database.
 
-    This endpoint returns a list of all defined terms and their metadata.
+    This endpoint returns a list of all defined terms and.
     Authorization is required.
 
     Returns:
-        List[TermMetadata]: A list of term metadata entries.
+        List[TermMetadata]: A list of term entries.
     """
     sql = load_sql("get_terms.sql", db=db_name)
 
@@ -145,9 +145,7 @@ async def create_term(
 ) -> TermCreateResponse:
     """Create a new term or return an existing one if it already exists.
 
-    Executes the `post_terms` stored procedure with provided parameters.
-
-    Args:
+     Args:
         payload: Request body containing term value, base type, and optional modifiers.
 
     Returns:
@@ -292,9 +290,8 @@ async def delete_term(
     term_id: int = Path(..., description="ID of the term to delete"),
 ):
     """
-    Deletes a term and all its children (via `up = term_id`).
-    Step 1: calls delete_terms(...) to check and delete base term.
-    Step 2: collects children recursively and deletes them in Python.
+    Deletes a term and all its children.
+ 
     """
     async with engine.begin() as conn:  # type: AsyncConnection
 

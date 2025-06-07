@@ -120,11 +120,11 @@ async def patch_object(
     db_name: str = Depends(validate_table_exists),
 ):
     """
-    Updates an object via patch_object stored procedure.
+    Updates the object along with its attributes.
 
     Args:
         object_id (int): ID of the object.
-        payload (PatchObjectRequest): Dictionary of fields to update in t{id} format.
+        payload (PatchObjectRequest): Set of fields to update named like t{id}, where {id} is the field (attribute) ID.
         db_name (str): Name of the table (validated).
 
     Returns:

@@ -315,7 +315,7 @@ async def get_term_objects(
 
     ref_dict = {(r.object_id, r.req_t): {str(r.ref_id): r.ref_val} for r in ref_vals}
     arr_dict = {(r.object_id, r.req_t): f"({r.count})" for r in arr_vals}
-    val_dict = {(r.object_id, r.req_t): r.value for r in req_vals}
+    val_dict = {(r.req_val, r.req_t): r.value for r in req_vals}
 
     objects = []
     for obj in object_rows:

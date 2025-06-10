@@ -279,7 +279,7 @@ async def get_term_objects(
     async with engine.begin() as conn:
         meta_sql = text(load_sql("get_term_metadata.sql", db=db_name, term_id=term_id))
         objs_sql = text(load_sql("get_term_objects.sql", db=db_name, term_id=term_id, parent_id=parent_id))
-        reqs_sql = text(load_sql("get_object_reqs.sql", db=db_name, term_id=term_id, parent_id=parent_id))
+        reqs_sql = text(load_sql("get_object_reqs.sql", db=db_name, term_id=term_id))
         refs_sql = text(load_sql("get_object_refs.sql", db=db_name, term_id=term_id, parent_id=parent_id))
         arrays_sql = text(load_sql("get_object_arrays.sql", db=db_name, term_id=term_id, parent_id=parent_id))
 

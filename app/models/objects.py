@@ -99,7 +99,7 @@ class ObjectRow(BaseModel):
     id: int
     up: int
     val: str
-    reqs: List[Union[str, Dict[str, str]]] = []
+    reqs: Dict[str, str] = {}
 
 class TermObjectsResponse(BaseModel):
     t: int

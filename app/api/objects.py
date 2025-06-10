@@ -279,21 +279,14 @@ async def get_term_objects(
     async with engine.begin() as conn:
         meta_sql = text(load_sql("get_term_metadata.sql", db=db_name, term_id=term_id))
         objs_sql = text(load_sql("get_term_objects.sql", db=db_name, term_id=term_id, parent_id=parent_id))
-        reqs_sql = text(load_sql("get_object_reqs.sql", db=db_name, term_id=term_id))
-        refs_sql = text(load_sql("get_object_refs.sql", db=db_name, term_id=term_id, parent_id=parent_id))
-        arrays_sql = text(load_sql("get_object_arrays.sql", db=db_name, term_id=term_id, parent_id=parent_id))
-
+        
         meta_rows = await conn.execute(meta_sql)
         object_rows = await conn.execute(objs_sql)
-        req_vals = await conn.execute(reqs_sql)
-        ref_vals = await conn.execute(refs_sql)
-        arr_vals = await conn.execute(arrays_sql)
+
 
         meta_rows = meta_rows.fetchall()
         object_rows = object_rows.fetchall()
-        req_vals = req_vals.fetchall()
-        ref_vals = ref_vals.fetchall()
-        arr_vals = arr_vals.fetchall()
+
 
     if not meta_rows:
         raise HTTPException(status_code=404, detail="Term not found")
@@ -311,24 +304,23 @@ async def get_term_objects(
                 original_name=row.ref_val,
             )
             header.append(f)
-            header_map[row.req_t] = f
-
-    ref_dict = {(r.object_id, r.req_t): {str(r.ref_id): r.ref_val} for r in ref_vals}
-    arr_dict = {(r.object_id, r.req_t): f"({r.count})" for r in arr_vals}
-    val_dict = {(r.req_val, r.req_t): r.value for r in req_vals}
+            header_map[row.req_id] = f
+            
 
     objects = []
     for obj in object_rows:
-        row = []
-        for h in header:
-            key = (obj.id, h.t)
-            row.append(
-                ref_dict.get(key)
-                or arr_dict.get(key)
-                or val_dict.get(key)
-                or ""
-            )
-        objects.append(ObjectRow(id=obj.id, up=obj.up, val=obj.val, reqs=row))
+        row = {}
+        async with engine.begin() as conn:
+            reqs_sql = text(load_sql("get_object_reqs.sql", db=db_name, obj_id=obj.id))
+            reqs_rows = await conn.execute(reqs_sql)
+            reqs_rows = reqs_rows.fetchall()
+            print(f"REQS ROWS FOR {obj.id}:", reqs_rows)
+            if reqs_rows:
+                for req_row in reqs_rows:
+                    if req_row:
+                        row[header_map[req_row[1]].name] = req_row[0]
+                        
+            objects.append(ObjectRow(id=obj.id, up=obj.up, val=obj.val, reqs=row))
 
     return JSONResponse(TermObjectsResponse(
         t=meta_rows[0].id,

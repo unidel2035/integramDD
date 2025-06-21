@@ -8,18 +8,19 @@ import json
 from app.db.db import engine, load_sql, validate_table_exists
 from app.models.terms import *
 from app.services.term_builder import build_terms_from_rows
+from app.services.ErrorManager import error_manager as em
 from app.auth.auth import verify_token
-from app.logger import db_logger
+from app.logger import setup_logger
 from app.settings import settings
 
 
 router = APIRouter()
+logger = setup_logger(__name__)
 
 
 @router.get(
     "/{db_name}/terms",
     response_model=List[Term],
-    dependencies=[Depends(verify_token)],
 )
 async def get_all_terms(
     db_name: str = Depends(validate_table_exists),
@@ -32,19 +33,22 @@ async def get_all_terms(
     Returns:
         List[TermMetadata]: A list of term entries.
     """
-    sql = load_sql("get_terms.sql", db=db_name)
+    try:
+        sql = load_sql("get_terms.sql", db=db_name)
 
-    async with engine.connect() as conn:
-        result = await conn.execute(text(sql))
-        rows = result.mappings().all()
+        async with engine.connect() as conn:
+            result = await conn.execute(text(sql))
+            rows = result.mappings().all()
 
-    return JSONResponse([dict(row) for row in rows])
+        return JSONResponse([dict(row) for row in rows])
+    except SQLAlchemyError as e:
+        logger.exception(f"DB error while fetching terms from {db_name}")
+        raise HTTPException(status_code=500, detail="Database error")
 
 
 @router.get(
     "/{db_name}/terms/{term_id}",
     response_model=Term,
-    dependencies=[Depends(verify_token)],
 )
 async def get_term(
     term_id: int = Path(..., description="Term ID to fetch"),
@@ -64,19 +68,23 @@ async def get_term(
     Returns:
         Term: A dictionary containing the term's ID, value, and base type.
     """
-    sql = load_sql("get_term.sql", db=db_name, term_id=term_id)
+    try:
+        sql = load_sql("get_term.sql", db=db_name, term_id=term_id)
 
-    async with engine.connect() as conn:
-        result = await conn.execute(text(sql))
-        rows = result.mappings().all()
-
-    return JSONResponse([dict(row) for row in rows])
+        async with engine.connect() as conn:
+            result = await conn.execute(text(sql))
+            rows = result.mappings().all()
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"Term {term_id} not found")
+        return JSONResponse(dict(rows[0]))
+    except SQLAlchemyError as e:
+        logger.exception(f"DB error while fetching terms from {db_name}")
+        raise HTTPException(status_code=500, detail="Database error")
 
 
 @router.get(
     "/{db_name}/metadata/{term_id}",
     response_model=TermMetadata,
-    dependencies=[Depends(verify_token)],
 )
 async def get_metadata_by_id(
     term_id: int = Path(..., description="Term ID to fetch"),
@@ -114,7 +122,6 @@ async def get_metadata_by_id(
 @router.get(
     "/{db_name}/metadata",
     response_model=List[TermMetadata],
-    dependencies=[Depends(verify_token)],
 )
 async def get_all_metadata(db_name: str = Depends(validate_table_exists)):
     """Fetches all metadata terms from the database.
@@ -137,22 +144,13 @@ async def get_all_metadata(db_name: str = Depends(validate_table_exists)):
 @router.post(
     "/{db_name}/terms",
     response_model=TermCreateResponse,
-    dependencies=[Depends(verify_token)],
 )
 async def create_term(
     payload: TermCreateRequest,
     db_name: str = Depends(validate_table_exists),
 ) -> TermCreateResponse:
-    """Create a new term or return an existing one if it already exists.
-
-     Args:
-        payload: Request body containing term value, base type, and optional modifiers.
-
-    Returns:
-        TermCreateResponse: JSON response with term metadata and optional warning.
-
-    Raises:
-        HTTPException: 400 if response is unexpected, 500 if DB call fails.
+    """
+    Create a new term or return an existing one if it already exists.
     """
     query = text(
         """
@@ -175,32 +173,39 @@ async def create_term(
             )
             row = result.fetchone()
 
-        if not row:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    except SQLAlchemyError as e:
+        logger.exception(f"Database error while executing post_terms: {e}")
+        raise HTTPException(status_code=500, detail="Database error")
 
-        term_id, result_flag = row
+    if not row:
+        logger.error(f"No response from post_terms for value={payload.val}")
+        raise HTTPException(status_code=500, detail="Empty DB response")
 
-        if result_flag == "1":
-            return TermCreateResponse(id=term_id, t=payload.t, val=payload.val)
+    term_id, result_flag = row
 
-        if result_flag == "warn_term_exists":
-            return TermCreateResponse(
-                id=term_id, t=payload.t, val=payload.val, warnings="Term already exists"
-            )
+    # Обработка ошибок и предупреждений через error_manager
+    status_code, message = em.get_status_and_message(result_flag) or (None, None)
 
-        db_logger.exception(f"Unexpected result from post_terms: {result_flag}")
+    if status_code == 200:
+        return JSONResponse(
+            TermCreateResponse(
+                id=term_id,
+                t=payload.t,
+                val=payload.val,
+                warnings=message,
+            ).model_dump(exclude_none=True)
+        )
 
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    if status_code:
+        em.raise_if_error(result_flag, log_context=f"POST /terms {payload.val}")
 
-    except SQLAlchemyError as _e:
-        db_logger.exception(f"Database error while executing post_terms: {_e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    logger.exception(f"Unexpected result from post_terms: {result_flag}")
+    raise HTTPException(status_code=500, detail="Unexpected DB response")
 
 
 @router.patch(
     "/{db_name}/terms/{term_id}",
     response_model=PatchTermResponse,
-    dependencies=[Depends(verify_token)],
 )
 async def patch_term(
     db_name: str = Path(..., description="Database name"),
@@ -213,77 +218,86 @@ async def patch_term(
     """
     sql = text("SELECT * FROM patch_terms(:db, :term_id, :value, :base)")
 
-    async with engine.begin() as conn:  # type: AsyncConnection
-        result = await conn.execute(
-            sql,
-            {
-                "db": db_name,
-                "term_id": term_id,
-                "value": payload.val,
-                "base": payload.t,
-            },
-        )
-        row = result.mappings().fetchone()
-        print(row)
-
-        if not row or row["res"] is None:
-            return JSONResponse(
-                status_code=400, content={"errors": "Unknown error during update."}
+    try:
+        async with engine.begin() as conn:
+            result = await conn.execute(
+                sql,
+                {
+                    "db": db_name,
+                    "term_id": term_id,
+                    "value": payload.val,
+                    "base": payload.t,
+                },
             )
+            row = result.mappings().fetchone()
 
-        if row["res"] == "err_term_name_exists":
-            return JSONResponse(
-                PatchTermResponse(id=row["exid"], errors=row["res"]).model_dump(
-                    exclude_none=True
+            if not row or row["res"] is None:
+                logger.error(f"patch_terms returned empty or None for {term_id}")
+                raise HTTPException(
+                    status_code=400, detail="Unknown error during update"
                 )
-            )
 
-        # Обработка модификаторов
-        if payload.__pydantic_extra__:
-            vals = list(payload.__pydantic_extra__.keys())
-            placeholders = ",".join([f"'{v.upper()}'" for v in vals])
-            print(f"Placeholders: {placeholders}")
-            mod_query = (
-                f"SELECT id, val FROM {db_name} "
-                f"WHERE val IN ({placeholders}) AND t=0 AND up=0"
-            )
-            mod_rows = await conn.execute(text(mod_query))
-            mods = mod_rows.mappings().all()
-            print(f"Modifiers found: {mods}")
-            for mod in mods:
-                mid, mval = mod["id"], mod["val"]
-                await conn.execute(
-                    text(f"DELETE FROM {db_name} WHERE t=:t AND up=:up"),
-                    {"t": mid, "up": term_id},
+            # обработка известных ошибок через error_manager
+            status_code, msg = em.get_status_and_message(row["res"]) or (None, None)
+            if status_code == 400 and row["res"] == "err_term_name_exists":
+                return PatchTermResponse(id=row.get("exid"), errors=msg)
+            if status_code:
+                em.raise_if_error(row["res"], log_context=f"PATCH /terms/{term_id}")
+
+            # Модификаторы
+            extra = payload.__pydantic_extra__ or {}
+            if extra:
+                vals = list(extra.keys())
+                logger.info(f"Modifier rows: {vals}")
+                placeholders = bindparam("placeholders", expanding=True)
+
+                sql = text(
+                    f"SELECT id, val FROM {db_name} "
+                    f"WHERE val IN :placeholders AND t=0 AND up=0"
+                ).bindparams(placeholders)
+
+                mod_rows = await conn.execute(
+                    sql,
+                    {"placeholders": tuple(v.upper() for v in vals)},
                 )
-                mod_val = payload.__pydantic_extra__.get(mval.lower(), None)
-                print(f"Modifier value for {mval}: {mod_val}")
-                if mod_val is None or mod_val == "":
-                    continue
-                if mval.upper() in settings.BOOLEAN_MODIFIERS:
-                    await conn.execute(
-                        text(f"INSERT INTO {db_name}(up, t) VALUES(:up, :t)"),
-                        {"up": term_id, "t": mid},
-                    )
-                else:
-                    await conn.execute(
-                        text(
-                            f"INSERT INTO {db_name}(up, t, val) VALUES(:up, :t, :val)"
-                        ),
-                        {"up": term_id, "t": mid, "val": mod_val},
-                    )
 
-    return JSONResponse(
-        PatchTermResponse(id=term_id, t=payload.t, val=payload.val).model_dump(
-            exclude_none=True
-        )
-    )
+                mods = mod_rows.mappings().all()
+                logger.debug(f"Found modifiers: {mods}")
+
+                for mod in mods:
+                    mid, mval = mod["id"], mod["val"]
+                    await conn.execute(
+                        text(f"DELETE FROM {db_name} WHERE t=:t AND up=:up"),
+                        {"t": mid, "up": term_id},
+                    )
+                    mod_val = extra.get(mval) or extra.get(mval.lower())
+                    logger.info(f"mod_val = {mod_val!r} for mval = {mval}")
+                    logger.info(f"BOOLEAN_MODIFIERS: {settings.BOOLEAN_MODIFIERS}")
+                    if not mod_val:
+                        continue
+                    if mval.upper() in settings.BOOLEAN_MODIFIERS:
+                        await conn.execute(
+                            text(f"INSERT INTO {db_name}(up, t) VALUES(:up, :t)"),
+                            {"up": term_id, "t": mid},
+                        )
+                    else:
+                        await conn.execute(
+                            text(
+                                f"INSERT INTO {db_name}(up, t, val) VALUES(:up, :t, :val)"
+                            ),
+                            {"up": term_id, "t": mid, "val": mod_val},
+                        )
+
+        return PatchTermResponse(id=term_id, t=payload.t, val=payload.val)
+
+    except SQLAlchemyError as e:
+        logger.exception(f"Database error while patching term {term_id}: {e}")
+        raise HTTPException(status_code=500, detail="Database error")
 
 
 @router.delete(
     "/{db_name}/terms/{term_id}",
     response_model=DeleteTermResponse,
-    dependencies=[Depends(verify_token)],
 )
 async def delete_term(
     db_name: str = Path(..., description="Database name"),
@@ -291,56 +305,52 @@ async def delete_term(
 ):
     """
     Deletes a term and all its children.
- 
+
     """
-    async with engine.begin() as conn:  # type: AsyncConnection
+    try:
+        async with engine.begin() as conn:
+            # === 1. Попытка удаления основного термина ===
+            result = await conn.execute(
+                text("SELECT delete_terms(:db, :term_id)"),
+                {"db": db_name, "term_id": term_id},
+            )
+            res = result.scalar_one_or_none()
+            if res is None or res != "1":
+                status_code, message = em.get_status_and_message(res) or (None, None)
+                if status_code == 200:
+                    return JSONResponse(DeleteTermResponse(error=message).model_dump(exclude_none=True))
+                if status_code:
+                    em.raise_if_error(res, log_context=f"DELETE /terms/{term_id}")
+                logger.error(f"Unexpected result from delete_terms: {res}")
+                raise HTTPException(status_code=500, detail="Unexpected DB error")
 
-        # 1
-        sql = text("SELECT delete_terms(:db, :term_id)")
-        result = await conn.execute(sql, {"db": db_name, "term_id": term_id})
-        res = result.scalar_one_or_none()
+            # === 2. Поиск всех вложенных терминов (обход дерева) ===
+            subs = []
+            queue = [term_id]
+            idx = 0
 
-        if res == "err_term_not_found":
-            raise HTTPException(status_code=404, detail="Term not found")
-
-        if res == "err_term_is_in_use":
-            return JSONResponse(
-                DeleteTermResponse(error="There are objects of this type").model_dump(
-                    exclude_none=True
+            while idx < len(queue):
+                parent = queue[idx]
+                result = await conn.execute(
+                    text(f"SELECT id FROM {db_name} WHERE up = :parent"),
+                    {"parent": parent},
                 )
-            )
+                children = result.mappings().all()
+                ids = [r["id"] for r in children]
+                queue.extend(ids)
+                subs.extend(ids)
+                idx += 1
 
-        if res is None or res != "1":
-            return JSONResponse(
-                DeleteTermResponse(error="Unknown error during deletion").model_dump(
-                    exclude_none=True
+            # === 3. Удаление вложенных терминов ===
+            if subs:
+                stmt = text(f"DELETE FROM {db_name} WHERE id IN :ids").bindparams(
+                    bindparam("ids", expanding=True)
                 )
-            )
+                await conn.execute(stmt, {"ids": subs})
 
-        # 2
-        subs = []
-        queue = [term_id]
-        idx = 0
+            # === 4. Финальный ответ ===
+            return JSONResponse(DeleteTermResponse(id=term_id, deleted_count=1 + len(subs)).model_dump(exclude_none=True))
 
-        while idx < len(queue):
-            parent = queue[idx]
-            sql = text(f"SELECT id FROM {db_name} WHERE up = :parent")
-            result = await conn.execute(sql, {"parent": parent})
-            children = result.mappings().all()
-            ids = [r["id"] for r in children]
-            queue.extend(ids)
-            subs.extend(ids)
-            idx += 1
-
-        # 3
-        if subs:
-            stmt = text(f"DELETE FROM {db_name} WHERE id IN :ids").bindparams(
-                bindparam("ids", expanding=True)
-            )
-            await conn.execute(stmt, {"ids": subs})
-
-        return JSONResponse(
-            DeleteTermResponse(id=term_id, deleted_count=1 + len(subs)).model_dump(
-                exclude_none=True
-            )
-        )
+    except SQLAlchemyError as e:
+        logger.exception(f"DB error during DELETE term {term_id} in {db_name}")
+        raise HTTPException(status_code=500, detail="Database error")

@@ -1,9 +1,8 @@
-from fastapi import APIRouter, Depends, Path, Body
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Union
+from fastapi import APIRouter, Depends, Path, Body, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+
 import json
 
 from app.auth.auth import verify_token
@@ -13,15 +12,16 @@ from app.models.requisites import (
     AddRequisiteResponse,
     RequisiteModifiers,
 )
+from app.services.ErrorManager import error_manager as em
+from app.logger import setup_logger
 
 
 router = APIRouter()
-
+logger = setup_logger(__name__)
 
 @router.post(
     "/{db_name}/requisites",
     response_model=AddRequisiteResponse,
-    dependencies=[Depends(verify_token)],
 )
 async def post_requisite(
     db_name: str = Depends(validate_table_exists),
@@ -47,31 +47,52 @@ async def post_requisite(
         JSON with new requisite ID or existing ID and warning.
     """
     sql = text("SELECT * FROM post_requisites(:db, :term_id, :req_id, :mods)")
-
     mods_dict = payload.__pydantic_extra__ or {}
 
-    async with engine.begin() as conn:
-        result = await conn.execute(
-            sql,
-            {
-                "db": db_name,
-                "term_id": payload.id,
-                "req_id": payload.t,
-                "mods": json.dumps(mods_dict),
-            },
-        )
-        row = result.mappings().fetchone()
+    try:
+        async with engine.begin() as conn:
+            result = await conn.execute(
+                sql,
+                {
+                    "db": db_name,
+                    "term_id": payload.id,
+                    "req_id": payload.t,
+                    "mods": json.dumps(mods_dict, ensure_ascii=False),
+                },
+            )
+            row = result.mappings().fetchone()
+
+    except SQLAlchemyError as e:
+        logger.exception(f"DB error while posting requisite for term {payload.id}")
+        raise HTTPException(status_code=500, detail="Database error")
 
     if not row or row["res"] is None:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Unknown error during requisite creation."},
+        logger.error("post_requisites returned NULL row")
+        raise HTTPException(
+            status_code=400, detail="Unknown error during requisite creation"
         )
 
-    response = AddRequisiteResponse(id=row["newid"])
-    if row["res"] == "warn_req_exists":
-        response.warnings = "Requisite already exists"
-    elif row["res"].startswith("err"):
-        return JSONResponse(status_code=400, content={"error": row["res"]})
+    result_flag = row["res"]
+    req_id = row["newid"]
 
-    return response
+    status_code, msg = em.get_status_and_message(result_flag) or (None, None)
+
+    if status_code == 200:
+        return JSONResponse(
+            AddRequisiteResponse(id=req_id, warnings=msg).model_dump(exclude_none=True)
+        )
+
+    if status_code:
+        em.raise_if_error(
+            result_flag, log_context=f"POST /requisites term_id={payload.id}"
+        )
+
+    if result_flag != "1":
+        logger.warning(f"Unexpected result from post_requisites: {result_flag}")
+        return JSONResponse(
+            AddRequisiteResponse(
+                id=req_id, warnings=f"Unexpected result: {result_flag}"
+            ).model_dump(exclude_none=True)
+        )
+
+    return JSONResponse(AddRequisiteResponse(id=req_id).model_dump(exclude_none=True))

@@ -87,6 +87,7 @@ class DeleteObjectResponse(BaseModel):
     id: int = Field(..., description="ID of the deleted object")
     
 class HeaderField(BaseModel):
+    id: int
     t: int
     name: str
     base: int

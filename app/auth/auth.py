@@ -7,25 +7,23 @@ class CustomBearer(HTTPBearer):
 
 security = CustomBearer()
 
-def verify_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-):
-    """Validates the Authorization header using a simple bearer token check.
-
-    This is a stub implementation meant to be replaced by proper JWT verification (e.g., via Keycloak).
+def verify_token(raw_token: str):
+    """
+    Validates a Bearer token string manually extracted from headers.
 
     Args:
-        authorization (str): The 'Authorization' header from the request.
-
-    Raises:
-        HTTPException: If the header is missing or invalid.
-        HTTPException: If the token is not recognized.
+        raw_token (str): The value of the 'Authorization' header.
 
     Returns:
-        dict: A dictionary representing the authenticated user's identity.
+        dict: Mock user identity if token is valid.
+
+    Raises:
+        HTTPException: If token is missing, malformed, or invalid.
     """
-    token = credentials.credentials
-    scheme = credentials.scheme if credentials else ""
+    if not raw_token or not raw_token.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or malformed token")
+
+    token = raw_token[len("Bearer "):].strip()
 
     if token != "secret-token":
         raise HTTPException(

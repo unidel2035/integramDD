@@ -25,7 +25,7 @@ LEFT JOIN {db} refs
 LEFT JOIN ({db} obj_mods CROSS JOIN {db} obj_mod_defs)
     ON obj_mods.up = obj.id AND obj_mod_defs.id = obj_mods.t AND obj_mod_defs.t = 0
 LEFT JOIN ({db} mods CROSS JOIN {db} mod_defs)
-    ON mods.up = reqs.id AND mod_defs.id = mods.t AND obj_mod_defs.t = 0
+  ON mods.up=reqs.id AND mod_defs.id=mods.t AND mod_defs.t = 0
 WHERE obj.up = 0 AND obj.id != obj.t AND obj.id = {term_id} AND obj.t != 0
 GROUP BY obj.id, obj, base, ref_id, req_id, req_t, ref_base, req_defs.val, ref_reqs.val, default_val
 ORDER BY ord;

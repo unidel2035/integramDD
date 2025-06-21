@@ -1,11 +1,20 @@
 from fastapi import APIRouter
 from sqlalchemy import text
+from pydantic import BaseModel
+
 from app.db.db import engine
+from app.logger import setup_logger
 
 router = APIRouter()
+logger = setup_logger()
 
 
-async def check_db() -> dict:
+class HealthStatus(BaseModel):
+    status: str
+    db: str
+
+
+async def check_database_connection() -> HealthStatus:
     """Performs a simple health check of the database connection.
 
     Executes a lightweight `SELECT 1` query to ensure the DB is reachable.
@@ -16,12 +25,13 @@ async def check_db() -> dict:
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        return {"status": "ok", "db": "connected"}
+        return HealthStatus(status="ok", db="connected")
     except Exception as e:
-        return {"status": "error", "db": str(e)}
+        logger.exception(f"Database health check failed: {e}")
+        return HealthStatus(status="error", db="unreachable")
 
 
-@router.get("/health")
+@router.get("/health", response_model=HealthStatus)
 async def health_check() -> dict:
     """Health check endpoint.
 
@@ -30,4 +40,4 @@ async def health_check() -> dict:
     Returns:
         dict: Service and DB status.
     """
-    return await check_db()
+    return await check_database_connection()

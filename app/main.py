@@ -1,9 +1,13 @@
 from fastapi import FastAPI
-from app.api import health, objects, requisites, references, terms
 from fastapi.security import HTTPBearer
 from fastapi.openapi.utils import get_openapi
 
+from app.api import health, objects, requisites, references, terms
+from app.middleware.auth_middleware import AuthMiddleware
+
+
 app = FastAPI()
+app.add_middleware(AuthMiddleware)
 security = HTTPBearer()
 
 def custom_openapi():

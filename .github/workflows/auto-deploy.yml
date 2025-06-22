@@ -1,0 +1,50 @@
+name: Auto Deploy
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout Repository
+              uses: actions/checkout@v3
+
+            - name: Set up SSH Key
+              run: |
+                  mkdir -p ~/.ssh
+                  echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+                  chmod 600 ~/.ssh/id_rsa
+                  ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+            - name: Deploy to Server
+              run: |
+                  ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+                    set -e
+                    cd ~/integram
+                    git pull origin main
+
+                    docker compose build backend
+                    export DB_HOST=${{ secrets.DB_HOST }}
+                    export DB_PORT=${{ secrets.DB_PORT }}
+                    export DB_NAME=${{ secrets.DB_NAME }}
+                    export DB_USER=${{ secrets.DB_USER }}
+                    export DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+
+                    docker compose up -d --no-deps --force-recreate backend
+
+                    echo "⏳ Waiting for PostgreSQL to be ready..."
+                    until docker exec integram-db pg_isready -U ${DB_USER} -d ${DB_NAME} -h ${DB_HOST} -p ${DB_PORT}; do
+                      echo "Postgres is not ready yet. Sleeping 2s..."
+                      sleep 2
+                    done
+
+                    echo "✅ PostgreSQL is up. Running SQL upload..."
+                    cd .sql_to_load
+                    ./upload_methods.sh -u ${DB_USER} -p ${DB_PASSWORD} -d ${DB_NAME}
+                  EOF

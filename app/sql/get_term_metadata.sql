@@ -12,7 +12,8 @@ SELECT obj.id,
        ref_reqs.val AS ref_val,
        req_defaults.val AS default_val,
        ARRAY_AGG(DISTINCT CONCAT(mod_defs.val, ' ', mods.val))
-           FILTER (WHERE mods.t != 0) AS mods
+           FILTER (WHERE mods.t != 0) AS mods,
+       tblreq.is_table_req AS is_table_req
 FROM {db} obj
 LEFT JOIN ({db} reqs CROSS JOIN {db} req_defs)
     ON reqs.up = obj.id AND req_defs.id = reqs.t AND req_defs.t != 0
@@ -26,6 +27,12 @@ LEFT JOIN ({db} obj_mods CROSS JOIN {db} obj_mod_defs)
     ON obj_mods.up = obj.id AND obj_mod_defs.id = obj_mods.t AND obj_mod_defs.t = 0
 LEFT JOIN ({db} mods CROSS JOIN {db} mod_defs)
   ON mods.up=reqs.id AND mod_defs.id=mods.t AND mod_defs.t = 0
+LEFT JOIN LATERAL (
+    SELECT EXISTS (
+        SELECT 1 FROM rep subreqs
+        WHERE subreqs.up = req_defs.id AND subreqs.t != 0
+    ) AS is_table_req
+) tblreq ON true
 WHERE obj.up = 0 AND obj.id != obj.t AND obj.id = {term_id} AND obj.t != 0
-GROUP BY obj.id, obj, base, ref_id, req_id, req_t, ref_base, req_defs.val, ref_reqs.val, default_val
+GROUP BY obj.id, obj, base, ref_id, req_id, req_t, ref_base, req_defs.val, ref_reqs.val, default_val, tblreq.is_table_req
 ORDER BY ord;

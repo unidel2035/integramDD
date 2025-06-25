@@ -91,7 +91,8 @@ class HeaderField(BaseModel):
     t: int
     name: str
     base: int
-    ref: Optional[int] = None
+    ref: Optional[int] = None,
+    is_table_req: bool = False,
     modifiers: List[str] = []
     original_name: Optional[str] = None
     array: Optional[int] = None
@@ -100,7 +101,7 @@ class ObjectRow(BaseModel):
     id: int
     up: int
     val: str
-    reqs: Dict[str, str] = {}
+    reqs: Dict[str, Any] = {}
 
 class TermObjectsResponse(BaseModel):
     t: int

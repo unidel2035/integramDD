@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Depends, Path, Query
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from sqlalchemy import text, bindparam, String, Integer, JSON
 from sqlalchemy.exc import SQLAlchemyError
 import json
 
@@ -34,9 +34,17 @@ async def create_object(
     Raises:
         HTTPException: For invalid parameters or unexpected DB errors.
     """
-    query = text("SELECT * FROM post_objects(:db, :up, :type, :attrs)")
+    query = text(
+        """
+    SELECT * FROM post_objects(:db, :up, :type, :attrs)
+    """
+    )
 
     try:
+        logger.info(
+            f"Creating object with payload: {payload.model_dump(exclude_none=True)}"
+        )
+        logger.info(f"json dump attrs: {json.dumps(payload.attrs)}")
         async with engine.begin() as conn:
             result = await conn.execute(
                 query,
@@ -48,7 +56,7 @@ async def create_object(
                 },
             )
             row = result.fetchone()
-
+        logger.info(f"DB response: {row}")
         if not row:
             logger.exception(
                 f"Empty response from post_objects: id={payload.id}, up={payload.up}, attrs_keys={list(payload.attrs.keys())}"
@@ -290,56 +298,77 @@ async def get_term_objects(
             header_map = {}
             header = []
             for row in meta_rows:
-                logger.info(f"Processing header row: {row.req_val}, {row.mods}")
+                logger.info(f"Processing header row: {row._asdict()}")
                 if row.req_id not in header_map:
                     field = HeaderField(
                         id=row.req_id,
                         t=row.req_t,
                         name=row.req_val,
-                        base=row.ref_base or row.req_t,
+                        base=row.base,
                         ref=row.ref_id,
-                        modifiers=[
-                            m
-                            for m in (row.mods or [])
-                        ],
+                        is_table_req=row.is_table_req,
+                        modifiers=[m for m in (row.mods or [])],
                         original_name=row.ref_val,
                     )
                     header.append(field)
                     header_map[row.req_id] = field
 
             # --- Detect tabular requisites with ORDER
-            ordered_table_reqs = {
-                field.t
-                for field in header
-                if any("ORDER" in mod for mod in field.modifiers) and field.base == field.t
-            }
+            table_reqs = dict(
+                (field.t, field) for field in header if field.is_table_req
+            )
 
+            ordered_table_reqs = dict(
+                (field.t, field)
+                for field in table_reqs.values()
+                if any("ORDER" in mod for mod in field.modifiers) and field.is_table_req
+            )
 
-            # --- Load both SQL templates
+            # --- Load SQL templates
             reqs_template = load_sql(
                 "get_object_reqs.sql", db=db_name, obj_id=":obj_id"
             )
+
             agg_template = load_sql(
-                "get_object_reqs_aggregated.sql", db=db_name, obj_id=":obj_id", array_ids=":array_ids"
+                "get_object_table_reqs.sql",
+                db=db_name,
+                not_in_clause="NOT",
+                obj_id=":obj_id",
+                array_ids=":array_ids",
+            )
+            agg_ordered_template = load_sql(
+                "get_object_table_reqs.sql",
+                db=db_name,
+                not_in_clause="",
+                obj_id=":obj_id",
+                array_ids=":array_ids",
             )
 
             objects = []
+            ordered_req_map = {}
+            logger.info(f"Ordered table requisites: {ordered_table_reqs}")
             for obj in object_rows:
                 if ordered_table_reqs:
                     array_ids = ",".join(map(str, ordered_table_reqs))
-                    reqs_sql_text = agg_template.replace(
+                    ordered_reqs_sql_text = agg_ordered_template.replace(
                         ":obj_id", str(obj.id)
                     ).replace(":array_ids", array_ids)
-                    logger.info(f"Using aggregated SQL for object {obj.id} with array_ids: {array_ids}")
-                    
-                else:
-                    reqs_sql_text = reqs_template.replace(":obj_id", str(obj.id))
+                    logger.info(
+                        f"Using aggregated SQL for object {obj.id} with array_ids: {array_ids}"
+                    )
+                    ordered_reqs = text(ordered_reqs_sql_text)
 
+                    ordered_reqs_rows = (await conn.execute(ordered_reqs)).fetchall()
+                    for row in ordered_reqs_rows:
+                        ordered_req_map[row[1]] = row[3]
+                    
+                    logger.info(f"Ordered requisites rows: {ordered_reqs_rows}")
+                    
+
+                reqs_sql_text = reqs_template.replace(":obj_id", str(obj.id))
                 reqs_sql = text(reqs_sql_text)
-                
+
                 reqs_rows = (await conn.execute(reqs_sql)).fetchall()
-                if ordered_table_reqs:
-                    logger.info(f"Aggregated requisites for object {obj.id}: {reqs_rows}")
 
                 row_data = {}
                 for req_row in reqs_rows:
@@ -348,19 +377,35 @@ async def get_term_objects(
                     field = header_map.get(req_id)
 
                     val = req_row[0]
+                    logger.info(f"Value for req_id {req_id}: {val}")
+                    logger.info(f"Field for req_id {req_id}: {field}")
                     if field:
                         if field.ref:
                             row_data[str(field.ref)] = val
                         else:
                             row_data[field.name] = val
                     else:
-                        if (
+                        # Проверяем, есть ли req_id среди значений .t в header_map
+                        if any(
+                            getattr(h, "t", None) == req_id for h in header_map.values()
+                        ):
+                            if row_data.get(f"{req_row[2]}") is None:
+                                row_data[f"{req_row[2]}"] = {"vals": [req_row[0]]}
+                            else:
+                                row_data[f"{req_row[2]}"]["vals"].append(req_row[0])
+                            
+                            if req_id in ordered_table_reqs.keys():
+                                row_data[f"{req_row[2]}"]["q"] = ordered_req_map.get(
+                                    req_id, None
+                                )
+                        elif (
                             len(req_row) > 3
                             and req_row[3]
                             and str(req_row[3]).isdigit()
                         ):
                             row_data[f"{req_row[2]}"] = str((req_row[3]))
 
+                logger.info(f"Row data for object {obj.id}: {row_data}")
                 objects.append(
                     ObjectRow(
                         id=obj.id,
@@ -369,6 +414,9 @@ async def get_term_objects(
                         reqs=row_data,
                     )
                 )
+                logger.info(f"Added object: {objects[-1]}")
+            
+            logger.info(f"Header map: {header_map}")
 
             response = TermObjectsResponse(
                 t=meta_rows[0].id,

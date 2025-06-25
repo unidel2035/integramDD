@@ -88,7 +88,7 @@ class Term(BaseModel):
 
 
 class PatchTermRequest(BaseModel):
-    val: str = Field(..., description="New name for the term")
+    val: Optional[str] = Field(None, description="New name for the term")
     t: int = Field(..., description="New base type ID")
 
     class Config:

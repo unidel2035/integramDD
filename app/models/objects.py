@@ -89,7 +89,7 @@ class DeleteObjectResponse(BaseModel):
 class HeaderField(BaseModel):
     id: int
     t: int
-    name: str
+    name: Any
     base: int
     ref: Optional[int] = None,
     is_table_req: bool = False,

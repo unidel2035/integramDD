@@ -22,6 +22,8 @@ jobs:
                   ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
                     set -e
                     cd ~/integram
+                    git reset --hard
+                    git clean -fd
                     git pull origin main
 
                     docker compose down -v

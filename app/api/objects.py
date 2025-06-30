@@ -164,7 +164,7 @@ async def patch_object(
     status_code, message = em.get_status_and_message(res) or (None, None)
 
     if status_code == 200:
-        response.warning = message
+        response.warnings = message
     elif status_code:
         em.raise_if_error(res, log_context=f"PATCH object {object_id} in {db_name}")
 

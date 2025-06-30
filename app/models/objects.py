@@ -78,7 +78,7 @@ class PatchObjectRequest(BaseModel):
 
 class PatchObjectResponse(BaseModel):
     id: int
-    val: Optional[str] = None
+    val: Optional[Any] = None
     error: Optional[str] = None
     warnings: Optional[str] = None
     

@@ -8,7 +8,7 @@ LOG_DIR.mkdir(exist_ok=True)
 
 def setup_logger(
     name: str = "app",
-    level: int = logging.INFO,
+    level: int = logging.DEBUG,
     file_name: str | None = None,
     stream: bool = True,
 ) -> logging.Logger:

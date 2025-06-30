@@ -12,7 +12,7 @@ from app.models.requisites import (
     AddRequisiteResponse,
     RequisiteModifiers,
 )
-from app.services.ErrorManager import error_manager as em
+from app.services.error_manager import error_manager as em
 from app.logger import setup_logger
 
 

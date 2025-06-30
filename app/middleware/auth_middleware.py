@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.auth.auth import verify_token
 
-EXCLUDE_PATHS = {"/docs", "/openapi.json", "/health"}
+EXCLUDE_PATHS = {"/docs", "/openapi.json", "/health", "/custom-docs", "/redoc", "/favicon.ico"}
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):

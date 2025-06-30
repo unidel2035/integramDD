@@ -11,6 +11,7 @@ from app.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+
 def _build_header(meta_rows):
     header_map = {}
     header = []
@@ -36,7 +37,8 @@ def _build_header(meta_rows):
 def _detect_ordered_reqs(header):
     table_reqs = {f.t: f for f in header if f.is_table_req}
     ordered = {
-        f.t: f for f in table_reqs.values()
+        f.t: f
+        for f in table_reqs.values()
         if any("ORDER" in mod for mod in f.modifiers)
     }
     return table_reqs, ordered
@@ -47,9 +49,30 @@ async def _fetch_metadata(conn, db_name, term_id):
     return (await conn.execute(sql)).fetchall()
 
 
-async def _fetch_objects(conn, db_name, term_id, parent_id):
-    sql = text(load_sql("get_term_objects.sql", db=db_name, term_id=term_id, parent_id=parent_id))
-    return (await conn.execute(sql)).fetchall()
+async def _fetch_objects(
+    conn,
+    db_name,
+    term_id,
+    parent_id,
+    joins="",
+    where_clause="",
+    sql_params=None,
+    limit=100,
+    offset=0,
+):
+    sql = text(
+        load_sql(
+            "get_term_objects.sql",
+            db=db_name,
+            term_id=term_id,
+            parent_id=parent_id,
+            joins=joins,
+            where_clauses=where_clause,
+            limit=limit,
+            offset=offset,
+        )
+    )
+    return (await conn.execute(sql, sql_params or {})).fetchall()
 
 
 async def _fetch_ordered_reqs(conn, obj_id, template, ordered_table_reqs):
@@ -61,7 +84,9 @@ async def _fetch_ordered_reqs(conn, obj_id, template, ordered_table_reqs):
     return {r[1]: r[3] for r in rows}
 
 
-async def _build_reqs_map(conn, obj_id, reqs_template, header_map, ordered_table_reqs, ordered_req_map):
+async def _build_reqs_map(
+    conn, obj_id, reqs_template, header_map, ordered_table_reqs, ordered_req_map
+):
     sql_text = reqs_template.replace(":obj_id", str(obj_id))
     reqs_rows = (await conn.execute(text(sql_text))).fetchall()
 

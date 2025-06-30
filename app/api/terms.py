@@ -8,7 +8,7 @@ import json
 from app.db.db import engine, load_sql, validate_table_exists
 from app.models.terms import *
 from app.services.term_builder import build_terms_from_rows
-from app.services.ErrorManager import error_manager as em
+from app.services.error_manager import error_manager as em
 from app.auth.auth import verify_token
 from app.logger import setup_logger
 from app.settings import settings

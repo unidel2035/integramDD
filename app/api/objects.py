@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Path, Query
+from fastapi import APIRouter, HTTPException, status, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text, bindparam, String, Integer, JSON
 from sqlalchemy.exc import SQLAlchemyError
@@ -6,8 +6,9 @@ import json
 
 from app.db.db import engine, validate_table_exists, load_sql
 from app.models.objects import *
+from app.models.filter import FilterQuery
 from app.logger import setup_logger
-from app.services.ErrorManager import error_manager as em
+from app.services.error_manager import error_manager as em
 from app.services.object_by_term import (
     _build_header,
     _detect_ordered_reqs,
@@ -16,6 +17,7 @@ from app.services.object_by_term import (
     _fetch_ordered_reqs,
     _build_reqs_map,
 )
+from app.services.filter_builder import FilterBuilder
 
 
 router = APIRouter()
@@ -130,6 +132,10 @@ async def patch_object(
         PatchObjectResponse: Update result with warnings or errors if any.
     """
     attrs = payload.get_payload()
+    
+    logger.info(
+        f"Patching object {object_id} in {db_name} with attrs: {attrs}"
+    )
 
     try:
         async with engine.begin() as conn:
@@ -267,9 +273,11 @@ async def get_object(
 
 @router.get("/{db_name}/objects/{term_id}", response_model=TermObjectsResponse)
 async def get_term_objects(
+    request: Request,
     db_name: str = Path(..., description="Database name"),
     term_id: int = Path(..., description="ID of the term"),
     parent_id: int = Query(1, alias="up", description="Parent ID"),
+    filters: FilterQuery = Depends(),
 ):
     """
     Returns:
@@ -282,18 +290,49 @@ async def get_term_objects(
         }
     """
     try:
+        _filters = {k: v for k, v in request.query_params.items()}
+
         async with engine.connect() as conn:
             meta_rows = await _fetch_metadata(conn, db_name, term_id)
             if not meta_rows:
                 raise HTTPException(status_code=404, detail="Term not found")
 
-            object_rows = await _fetch_objects(conn, db_name, term_id, parent_id)
-
             header, header_map = _build_header(meta_rows)
+            # FILTER
+            
+            joins = where_clause = ""
+            sql_params = {}
+            
+            if _filters:
+                logger.debug(f"Applying filters: {_filters}")
+                filter_builder = FilterBuilder(
+                    _filters, term_id=term_id, db_name=db_name, term_name=meta_rows[0].obj, header=header
+                )
+                joins, where_clause, sql_params = filter_builder.build()
+                
+                logger.debug(f"Generated joins: {joins}")
+                logger.debug(f"Generated where clause: {where_clause}")
+                logger.debug(f"SQL parameters: {sql_params}")
+
+            object_rows = await _fetch_objects(
+                conn,
+                db_name,
+                term_id,
+                parent_id,
+                joins=joins,
+                where_clause=where_clause,
+                limit=filters.limit,
+                offset=filters.offset,
+                sql_params=sql_params,
+            )
+
+
             table_reqs, ordered_table_reqs = _detect_ordered_reqs(header)
             logger.debug(f"Ordered table requisites: {ordered_table_reqs}")
 
-            reqs_template = load_sql("get_object_reqs.sql", db=db_name, obj_id=":obj_id")
+            reqs_template = load_sql(
+                "get_object_reqs.sql", db=db_name, obj_id=":obj_id"
+            )
             agg_template = load_sql(
                 "get_object_table_reqs.sql",
                 db=db_name,
@@ -318,7 +357,12 @@ async def get_term_objects(
                     )
 
                 row_data = await _build_reqs_map(
-                    conn, obj.id, reqs_template, header_map, ordered_table_reqs, ordered_req_map
+                    conn,
+                    obj.id,
+                    reqs_template,
+                    header_map,
+                    ordered_table_reqs,
+                    ordered_req_map,
                 )
 
                 objects.append(

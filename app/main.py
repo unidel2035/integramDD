@@ -16,6 +16,7 @@ def custom_openapi():
     openapi_schema = get_openapi(
         title="Integram API",
         version="0.1.0",
+        openapi_version="3.1.0",
         description="API for Integram",
         routes=app.routes,
     )

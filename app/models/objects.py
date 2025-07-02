@@ -109,3 +109,10 @@ class TermObjectsResponse(BaseModel):
     base: int
     header: List[HeaderField]
     objects: List[ObjectRow]
+    
+class ObjectQuery(BaseModel):
+    term_id: int
+    up: Optional[int] = 1
+    limit: Optional[int] = 20
+    offset: Optional[int] = 0
+    filters: Optional[Dict[str, Any]] = None

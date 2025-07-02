@@ -387,3 +387,87 @@ async def get_term_objects(
     except SQLAlchemyError:
         logger.exception(f"DB error while fetching term {term_id} in {db_name}")
         raise HTTPException(status_code=500, detail="Database error")
+
+
+@router.post("/{db_name}/objects/graphql")
+async def get_term_objects_post(query: ObjectQuery, db_name: str = Path(..., description="Database name")):
+    """
+    Альтернатива GET-запросу на /objects/{termId}?up={parentId}, но с телом POST.
+    """
+    term_id = query.term_id
+    parent_id = query.up
+    limit = query.limit
+    offset = query.offset
+    filters = query.filters or {}
+
+    async with engine.connect() as conn:
+        meta_rows = await _fetch_metadata(conn, db_name=db_name, term_id=term_id)
+        if not meta_rows:
+            raise HTTPException(status_code=404, detail="Term not found")
+
+        header, header_map = _build_header(meta_rows)
+
+        joins = where_clause = ""
+        sql_params = {}
+
+        if filters:
+            filter_builder = FilterBuilder(
+                filters,
+                term_id=term_id,
+                db_name=db_name,
+                term_name=meta_rows[0].obj,
+                header=header,
+            )
+            joins, where_clause, sql_params = filter_builder.build()
+
+        object_rows = await _fetch_objects(
+            conn,
+            db_name,
+            term_id,
+            parent_id,
+            joins=joins,
+            where_clause=where_clause,
+            limit=limit,
+            offset=offset,
+            sql_params=sql_params,
+        )
+
+        table_reqs, ordered_table_reqs = _detect_ordered_reqs(header)
+
+        reqs_template = load_sql("get_object_reqs.sql", db=db_name, obj_id=":obj_id")
+        agg_template = load_sql("get_object_table_reqs.sql", db=db_name, not_in_clause="NOT", obj_id=":obj_id", array_ids=":array_ids")
+        agg_ordered_template = load_sql("get_object_table_reqs.sql", db=db_name, not_in_clause="", obj_id=":obj_id", array_ids=":array_ids")
+
+        objects = []
+        for obj in object_rows:
+            ordered_req_map = {}
+            if ordered_table_reqs:
+                ordered_req_map = await _fetch_ordered_reqs(conn, obj.id, agg_ordered_template, ordered_table_reqs)
+
+            row_data = await _build_reqs_map(
+                conn,
+                obj.id,
+                reqs_template,
+                header_map,
+                ordered_table_reqs,
+                ordered_req_map,
+            )
+
+            objects.append(
+                ObjectRow(
+                    id=obj.id,
+                    up=obj.up,
+                    val=obj.val,
+                    reqs=row_data,
+                )
+            )
+
+        return JSONResponse(
+            TermObjectsResponse(
+                t=meta_rows[0].id,
+                name=meta_rows[0].obj,
+                base=meta_rows[0].base,
+                header=header,
+                objects=objects,
+            ).model_dump(exclude_none=True)
+        )

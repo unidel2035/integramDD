@@ -27,9 +27,12 @@ jobs:
                   ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
                     set -e
                     cd ~/integram
-                    git reset --hard
+
+                    echo "Resetting working tree to remote state..."
+                    git fetch origin
+                    git checkout main || git checkout -b main
+                    git reset --hard origin/main
                     git clean -fd
-                    git pull origin main
 
                     docker compose build backend
                     export DB_HOST=${{ secrets.DB_HOST }}

@@ -104,7 +104,8 @@ async def _build_reqs_map(
                 logger.error(f"Invalid req_id {req_id} or val {val}, skipping")
                 continue
             else:
-                row_data[str(field.ref)] = field_name
+                key = str(field.ref) if field.ref else field.name
+                row_data[key] = field_name
                 continue
                 
         

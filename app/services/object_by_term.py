@@ -105,6 +105,7 @@ async def _build_reqs_map(
                 continue
             else:
                 row_data[str(field.ref)] = field_name
+                continue
                 
         
         if field:

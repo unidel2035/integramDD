@@ -92,40 +92,28 @@ async def _build_reqs_map(
 
     row_data = {}
     for row in reqs_rows:
-        val, req_id_like, field_name, alt_val = row
-
-        field = header_map.get(req_id_like)
-
+        val, req_id, field_name, alt_val = row
+        field = header_map.get(req_id)
         logger.debug(f"Req row: {row}")
         if not field:
-            logger.warning(f"Unknown field ID {req_id_like}, maybe its reference?")
+            logger.warning(f"Field not found for req_id {req_id}, maybe it's referenced?")
             try:
                 field = header_map.get(int(val))
+                logger.info(f"Found field by val {val}: {field}")
             except ValueError:
-                logger.warning(f"Field {val} is not a valid ID, skipping")
-            else:
-                if field:
-                    logger.debug(f"Found field by ID: {field}")
-                else:
-                    logger.warning(f"Field ID {val} not found in header map")
-                    continue
-
+                logger.error(f"Invalid req_id {req_id} or val {val}, skipping")
+                continue
+        
         if field:
             key = str(field.ref) if field.ref else field.name
-            value = (
-                f"{val} → {field.original_name}"
-                if field.original_name and field.ref
-                else val
-            )
-            row_data[key] = value
+            row_data[key] = val
         else:
-            if any(h.t == req_id_like for h in header_map.values()):
+            if any(h.t == req_id for h in header_map.values()):
                 entry = row_data.setdefault(field_name, {"vals": []})
                 entry["vals"].append(val)
-                if req_id_like in ordered_table_reqs:
-                    entry["q"] = ordered_req_map.get(req_id_like)
+                if req_id in ordered_table_reqs:
+                    entry["q"] = ordered_req_map.get(req_id)
             elif alt_val and str(alt_val).isdigit():
                 row_data[field_name] = str(alt_val)
-
     logger.debug(f"Built row_data: {row_data}")
     return row_data

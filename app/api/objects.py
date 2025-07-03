@@ -132,10 +132,8 @@ async def patch_object(
         PatchObjectResponse: Update result with warnings or errors if any.
     """
     attrs = payload.get_payload()
-    
-    logger.info(
-        f"Patching object {object_id} in {db_name} with attrs: {attrs}"
-    )
+
+    logger.info(f"Patching object {object_id} in {db_name} with attrs: {attrs}")
 
     try:
         async with engine.begin() as conn:
@@ -299,17 +297,21 @@ async def get_term_objects(
 
             header, header_map = _build_header(meta_rows)
             # FILTER
-            
+
             joins = where_clause = ""
             sql_params = {}
-            
+
             if _filters:
                 logger.debug(f"Applying filters: {_filters}")
                 filter_builder = FilterBuilder(
-                    _filters, term_id=term_id, db_name=db_name, term_name=meta_rows[0].obj, header=header
+                    _filters,
+                    term_id=term_id,
+                    db_name=db_name,
+                    term_name=meta_rows[0].obj,
+                    header=header,
                 )
                 joins, where_clause, sql_params = filter_builder.build()
-                
+
                 logger.debug(f"Generated joins: {joins}")
                 logger.debug(f"Generated where clause: {where_clause}")
                 logger.debug(f"SQL parameters: {sql_params}")
@@ -325,7 +327,6 @@ async def get_term_objects(
                 offset=filters.offset,
                 sql_params=sql_params,
             )
-
 
             table_reqs, ordered_table_reqs = _detect_ordered_reqs(header)
             logger.debug(f"Ordered table requisites: {ordered_table_reqs}")
@@ -367,9 +368,9 @@ async def get_term_objects(
 
                 objects.append(
                     ObjectRow(
-                        id=obj.id,
-                        up=obj.up,
-                        val=obj.val,
+                        id=int(obj.id),
+                        up=int(obj.up),
+                        val=str(obj.val),
                         reqs=row_data,
                     )
                 )
@@ -390,7 +391,9 @@ async def get_term_objects(
 
 
 @router.post("/{db_name}/objects/graphql")
-async def get_term_objects_post(query: ObjectQuery, db_name: str = Path(..., description="Database name")):
+async def get_term_objects_post(
+    query: ObjectQuery, db_name: str = Path(..., description="Database name")
+):
     """
     Альтернатива GET-запросу на /objects/{termId}?up={parentId}, но с телом POST.
     """
@@ -435,14 +438,28 @@ async def get_term_objects_post(query: ObjectQuery, db_name: str = Path(..., des
         table_reqs, ordered_table_reqs = _detect_ordered_reqs(header)
 
         reqs_template = load_sql("get_object_reqs.sql", db=db_name, obj_id=":obj_id")
-        agg_template = load_sql("get_object_table_reqs.sql", db=db_name, not_in_clause="NOT", obj_id=":obj_id", array_ids=":array_ids")
-        agg_ordered_template = load_sql("get_object_table_reqs.sql", db=db_name, not_in_clause="", obj_id=":obj_id", array_ids=":array_ids")
+        agg_template = load_sql(
+            "get_object_table_reqs.sql",
+            db=db_name,
+            not_in_clause="NOT",
+            obj_id=":obj_id",
+            array_ids=":array_ids",
+        )
+        agg_ordered_template = load_sql(
+            "get_object_table_reqs.sql",
+            db=db_name,
+            not_in_clause="",
+            obj_id=":obj_id",
+            array_ids=":array_ids",
+        )
 
         objects = []
         for obj in object_rows:
             ordered_req_map = {}
             if ordered_table_reqs:
-                ordered_req_map = await _fetch_ordered_reqs(conn, obj.id, agg_ordered_template, ordered_table_reqs)
+                ordered_req_map = await _fetch_ordered_reqs(
+                    conn, obj.id, agg_ordered_template, ordered_table_reqs
+                )
 
             row_data = await _build_reqs_map(
                 conn,
@@ -455,9 +472,9 @@ async def get_term_objects_post(query: ObjectQuery, db_name: str = Path(..., des
 
             objects.append(
                 ObjectRow(
-                    id=obj.id,
-                    up=obj.up,
-                    val=obj.val,
+                    id=int(obj.id),
+                    up=int(obj.up),
+                    val=str(obj.val),
                     reqs=row_data,
                 )
             )

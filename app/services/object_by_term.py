@@ -98,10 +98,17 @@ async def _build_reqs_map(
 
         logger.debug(f"Req row: {row}")
         if not field:
-            for f in header_map.values():
-                if f.t == req_id_like and f.original_name == field_name:
-                    field = f
-                    break
+            logger.warning(f"Unknown field ID {req_id_like}, maybe its reference?")
+            try:
+                field = header_map.get(int(val))
+            except ValueError:
+                logger.warning(f"Field {val} is not a valid ID, skipping")
+            else:
+                if field:
+                    logger.debug(f"Found field by ID: {field}")
+                else:
+                    logger.warning(f"Field ID {val} not found in header map")
+                    continue
 
         if field:
             key = str(field.ref) if field.ref else field.name

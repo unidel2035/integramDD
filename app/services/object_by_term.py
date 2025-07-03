@@ -92,19 +92,33 @@ async def _build_reqs_map(
 
     row_data = {}
     for row in reqs_rows:
-        val, req_id, field_name, alt_val = row
-        field = header_map.get(req_id)
+        val, req_id_like, field_name, alt_val = row
+
+        field = header_map.get(req_id_like)
+
         logger.debug(f"Req row: {row}")
+        if not field:
+            for f in header_map.values():
+                if f.t == req_id_like and f.original_name == field_name:
+                    field = f
+                    break
+
         if field:
             key = str(field.ref) if field.ref else field.name
-            row_data[key] = val
+            value = (
+                f"{val} → {field.original_name}"
+                if field.original_name and field.ref
+                else val
+            )
+            row_data[key] = value
         else:
-            if any(h.t == req_id for h in header_map.values()):
+            if any(h.t == req_id_like for h in header_map.values()):
                 entry = row_data.setdefault(field_name, {"vals": []})
                 entry["vals"].append(val)
-                if req_id in ordered_table_reqs:
-                    entry["q"] = ordered_req_map.get(req_id)
+                if req_id_like in ordered_table_reqs:
+                    entry["q"] = ordered_req_map.get(req_id_like)
             elif alt_val and str(alt_val).isdigit():
                 row_data[field_name] = str(alt_val)
+
     logger.debug(f"Built row_data: {row_data}")
     return row_data

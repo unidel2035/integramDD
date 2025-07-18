@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.security import HTTPBearer
 from fastapi.openapi.utils import get_openapi
 
-from app.api import health, objects, requisites, references, terms
+from app.api import health, objects, requisites, references, terms, queries
 from app.middleware.auth_middleware import AuthMiddleware
 
 
@@ -42,4 +42,5 @@ app.include_router(terms.router)
 app.include_router(objects.router)
 app.include_router(requisites.router)
 app.include_router(references.router)
+app.include_router(queries.router)
 

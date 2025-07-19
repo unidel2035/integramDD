@@ -22,7 +22,7 @@ class QueryBuilder:
         self.subqueries = {}
         
         # Сортируем колонки по порядку
-        sorted_columns = sorted(columns, key=lambda x: x.ord)
+        self.sorted_columns = sorted_columns = sorted(columns, key=lambda x: x.ord)
         logger.info(f"Column order: {[f'{col.ord}:{col.obj}({col.obj_name})' for col in sorted_columns]}")
 
         # Добавляем первую колонку как мастер-таблицу
@@ -145,21 +145,21 @@ class QueryBuilder:
                     "reverse": True
                 }
 
-            # 4. Подчиненная колонка: up указывает на родителя
-            if hasattr(column, 'up') and column.up and column.up == added_obj:
-                logger.info(f"Found parent-child connection: {column.obj_name} -> {added_column.obj_name} (up={column.up})")
+            # 4. Специальная обработка ссылочных колонок (is_ref=True) с up-связью
+            if hasattr(column, 'is_ref') and column.is_ref is True and hasattr(column, 'up') and column.up and column.up == added_obj:
+                logger.info(f"Found reference-up connection: {column.obj_name} -> {added_column.obj_name} (is_ref=True, up={column.up})")
                 return {
-                    "type": "child",
+                    "type": "reference_up",
                     "parent_obj": added_obj,
                     "parent_column": added_column,
                     "target_obj": column.obj
                 }
 
-            # 4a. Специальная обработка ссылочных колонок (is_ref=1) с up-связью
-            if hasattr(column, 'is_ref') and column.is_ref and hasattr(column, 'up') and column.up and column.up == added_obj:
-                logger.info(f"Found reference-up connection: {column.obj_name} -> {added_column.obj_name} (is_ref=1, up={column.up})")
+            # 4a. Подчиненная колонка: up указывает на родителя
+            if hasattr(column, 'up') and column.up and column.up == added_obj:
+                logger.info(f"Found parent-child connection: {column.obj_name} -> {added_column.obj_name} (up={column.up})")
                 return {
-                    "type": "reference_up",
+                    "type": "child",
                     "parent_obj": added_obj,
                     "parent_column": added_column,
                     "target_obj": column.obj
@@ -211,9 +211,19 @@ class QueryBuilder:
 
         elif connection["type"] == "dependent":
             # Подчиненная таблица: a{obj}.up = parent.id
-            subquery = f"""(SELECT a{column.obj}.up, a{column.obj}.val a{column.obj}_val, a{column.obj}.id a{column.obj}_id
-                FROM {db_name} a{column.obj}
-                WHERE a{column.obj}.t={column.obj})"""
+            
+            # Специальная обработка для объектов - нужен дополнительный JOIN для получения названия
+            # Определяем, является ли это объектом по наличию записей типа, где val содержит числовые ID
+            if self._is_object_type(column.obj, db_name):
+                subquery = f"""(SELECT a{column.obj}.up, obj_name.val a{column.obj}_val, a{column.obj}.id a{column.obj}_id
+                    FROM {db_name} a{column.obj}
+                    LEFT JOIN {db_name} obj_name ON obj_name.id = CAST(a{column.obj}.val AS INTEGER)
+                    WHERE a{column.obj}.t={column.obj})"""
+            else:
+                subquery = f"""(SELECT a{column.obj}.up, a{column.obj}.val a{column.obj}_val, a{column.obj}.id a{column.obj}_id
+                    FROM {db_name} a{column.obj}
+                    WHERE a{column.obj}.t={column.obj})"""
+            
             # Для мастер колонки используем .id, для JOIN колонок используем .a{obj}_id
             if connection["parent_obj"] == master_obj:
                 condition = f"{alias}.up={parent_alias}.id"
@@ -222,9 +232,19 @@ class QueryBuilder:
 
         elif connection["type"] == "child":
             # Дочерняя колонка: a{obj}.up = parent.id
-            subquery = f"""(SELECT a{column.obj}.up, a{column.obj}.val a{column.obj}_val, a{column.obj}.id a{column.obj}_id
-                FROM {db_name} a{column.obj}
-                WHERE a{column.obj}.t={column.obj})"""
+            
+            # Специальная обработка для объектов - нужен дополнительный JOIN для получения названия
+            # Определяем, является ли это объектом по наличию записей типа, где val содержит числовые ID
+            if self._is_object_type(column.obj, db_name):
+                subquery = f"""(SELECT a{column.obj}.up, obj_name.val a{column.obj}_val, a{column.obj}.id a{column.obj}_id
+                    FROM {db_name} a{column.obj}
+                    LEFT JOIN {db_name} obj_name ON obj_name.id = CAST(a{column.obj}.val AS INTEGER)
+                    WHERE a{column.obj}.t={column.obj})"""
+            else:
+                subquery = f"""(SELECT a{column.obj}.up, a{column.obj}.val a{column.obj}_val, a{column.obj}.id a{column.obj}_id
+                    FROM {db_name} a{column.obj}
+                    WHERE a{column.obj}.t={column.obj})"""
+            
             # Для мастер колонки используем .id, для JOIN колонок используем .a{obj}_id
             if connection["parent_obj"] == master_obj:
                 condition = f"{alias}.up={parent_alias}.id"
@@ -232,10 +252,23 @@ class QueryBuilder:
                 condition = f"{alias}.up={parent_alias}.a{connection['parent_column'].obj}_id"
 
         elif connection["type"] == "reference_up":
-            # Ссылочная колонка с up-связью (is_ref=1): a{obj}.up = parent.id
-            subquery = f"""(SELECT a{column.obj}.up, a{column.obj}.val a{column.obj}_val, a{column.obj}.id a{column.obj}_id
-                FROM {db_name} a{column.obj}
-                WHERE a{column.obj}.t={column.obj})"""
+            # Ссылочная колонка с up-связью (is_ref=True): универсальная обработка
+            # Ищем записи, где parent.t = parent_obj и child.val = str(target_obj)
+            # Это означает связь между родительским объектом и типом целевого объекта
+            
+            parent_obj_type = connection["parent_obj"]  # тип родительского объекта (например, 72)
+            target_obj_type = column.obj  # тип целевого объекта (например, 111)
+            
+            logger.info(f"Creating reference_up JOIN for {column.obj_name}: looking for links between parent_type={parent_obj_type} and target_type={target_obj_type}")
+            
+            subquery = f"""(SELECT link_table.up, link_table.val a{column.obj}_val, link_table.id a{column.obj}_id
+                FROM {db_name} link_table
+                WHERE EXISTS (
+                    SELECT 1 FROM {db_name} parent_obj 
+                    WHERE parent_obj.id = link_table.up 
+                    AND parent_obj.t = {parent_obj_type}
+                ) AND link_table.val = '{target_obj_type}')"""
+            
             # Для мастер колонки используем .id, для JOIN колонок используем .a{obj}_id
             if connection["parent_obj"] == master_obj:
                 condition = f"{alias}.up={parent_alias}.id"
@@ -293,7 +326,11 @@ class QueryBuilder:
                 select_fields.append(f"{alias}.a{column.obj}_val c{column.col_id}")
             else:
                 # Это отдельная таблица без JOIN
-                select_fields.append(f"{alias}.val c{column.col_id}")
+                # Специальная обработка для объектов - получаем читаемые названия
+                if self._is_object_type(column.obj, db_name):
+                    select_fields.append(f"COALESCE(obj_name_{alias}.val, {alias}.val) c{column.col_id}")
+                else:
+                    select_fields.append(f"{alias}.val c{column.col_id}")
 
         # FROM clause - если есть несколько отдельных таблиц, используем CROSS JOIN
         separate_tables = []
@@ -307,6 +344,11 @@ class QueryBuilder:
             for obj_id in separate_tables:
                 alias = self.table_aliases[obj_id]
                 from_parts.append(f"CROSS JOIN {db_name} {alias}")
+                
+                # Для объектов добавляем LEFT JOIN для получения названий
+                if self._is_object_type(obj_id, db_name):
+                    from_parts.append(f"LEFT JOIN {db_name} obj_name_{alias} ON obj_name_{alias}.id = CAST({alias}.val AS INTEGER)")
+                    
             from_clause = " ".join(from_parts)
         else:
             from_clause = f"{db_name} {master_alias}"
@@ -359,6 +401,22 @@ class QueryBuilder:
         logger.info(f"Generated SQL:\n{sql}")
         
         return sql
+
+    def _is_object_type(self, obj_type: int, db_name: str) -> bool:
+        """
+        Определяет, является ли тип объектом по логике:
+        - Если у объекта up=0 или up=1 то это объект
+        - Иначе - подчиненная запись
+        """
+        # Ищем колонку с данным объектом
+        logger.info(f"Checking if type {obj_type} is an object type")
+        logger.info(f"Columns: {[col for col in self.sorted_columns]}")
+        column = next((col for col in self.sorted_columns if col.obj == obj_type), None)
+        if not column:
+            return False
+        
+        # Объект, если up=0 или up=1 
+        return column.up == 0
 
     def _build_nested_subquery(self, parent_obj: int, nested_joins: List, table_columns: Dict, db_name: str) -> Optional[str]:
         """Строит вложенный подзапрос для таблицы с дочерними JOIN-ами"""

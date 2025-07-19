@@ -252,22 +252,27 @@ class QueryBuilder:
                 condition = f"{alias}.up={parent_alias}.a{connection['parent_column'].obj}_id"
 
         elif connection["type"] == "reference_up":
-            # Ссылочная колонка с up-связью (is_ref=True): универсальная обработка
-            # Ищем записи, где parent.t = parent_obj и child.val = str(target_obj)
-            # Это означает связь между родительским объектом и типом целевого объекта
+            # Ссылочная колонка с up-связью: получаем читаемое название по ID ссылки
+            # Поддерживаем цепочки ссылок (ссылка -> ссылка -> название)
+            parent_obj_type = connection["parent_obj"]
+            target_obj_type = column.obj
             
-            parent_obj_type = connection["parent_obj"]  # тип родительского объекта (например, 72)
-            target_obj_type = column.obj  # тип целевого объекта (например, 111)
-            
-            logger.info(f"Creating reference_up JOIN for {column.obj_name}: looking for links between parent_type={parent_obj_type} and target_type={target_obj_type}")
-            
-            subquery = f"""(SELECT link_table.up, link_table.val a{column.obj}_val, link_table.id a{column.obj}_id
-                FROM {db_name} link_table
-                WHERE EXISTS (
-                    SELECT 1 FROM {db_name} parent_obj 
-                    WHERE parent_obj.id = link_table.up 
-                    AND parent_obj.t = {parent_obj_type}
-                ) AND link_table.val = '{target_obj_type}')"""
+            subquery = f"""(SELECT link_table.up, 
+                                COALESCE(
+                                    ref_name2.val,
+                                    ref_name1.val, 
+                                    link_table.val
+                                ) a{column.obj}_val, 
+                                link_table.id a{column.obj}_id
+                            FROM {db_name} link_table
+                            LEFT JOIN {db_name} ref_name1 ON ref_name1.id = CAST(link_table.val AS INTEGER)
+                            LEFT JOIN {db_name} ref_name2 ON ref_name2.id = CAST(ref_name1.val AS INTEGER) 
+                                                          AND ref_name1.val ~ '^[0-9]+$'
+                            WHERE EXISTS (
+                                SELECT 1 FROM {db_name} parent_obj 
+                                WHERE parent_obj.id = link_table.up 
+                                AND parent_obj.t = {parent_obj_type}
+                            ) AND link_table.val = '{target_obj_type}')"""
             
             # Для мастер колонки используем .id, для JOIN колонок используем .a{obj}_id
             if connection["parent_obj"] == master_obj:
@@ -405,7 +410,7 @@ class QueryBuilder:
     def _is_object_type(self, obj_type: int, db_name: str) -> bool:
         """
         Определяет, является ли тип объектом по логике:
-        - Если у объекта up=0 или up=1 то это объект
+        - Если у объекта up=0 то это объект
         - Иначе - подчиненная запись
         """
         # Ищем колонку с данным объектом

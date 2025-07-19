@@ -9,8 +9,9 @@ from app.models.queries import QueryRequest, QueryColumn, QueryResponse
 from app.services.query_builder import QueryBuilder
 from app.db.db import engine, validate_table_exists, load_sql
 from app.services.error_manager import error_manager as em
-from app.logger import logger
+from app.logger import setup_logger
 
+logger = setup_logger(__name__)
 router = APIRouter(tags=["queries"])
 
 @router.get("/{db_name}/queries/{query_id}")
@@ -39,7 +40,7 @@ async def execute_query_get(
         
         # Строим SQL
         builder = QueryBuilder()
-        sql = builder.build_query(columns)
+        sql = builder.build_query(columns, db_name)
         
         logger.info(f"Generated SQL: {sql}")
         
@@ -55,7 +56,8 @@ async def execute_query_get(
             QueryResponse(
                 data=data,
                 columns=[col.obj_name for col in columns],
-                total=len(data)
+                total=len(data),
+                sql=sql
             ).model_dump(exclude_none=True)
         )
         
@@ -91,7 +93,7 @@ async def execute_query_post(
         
         # Строим SQL с учетом параметров
         builder = QueryBuilder()
-        sql = builder.build_query(request.columns)
+        sql = builder.build_query(request.columns, db_name)
         
         # Применяем фильтры и параметры
         if request.filters:
@@ -114,7 +116,8 @@ async def execute_query_post(
             QueryResponse(
                 data=data,
                 columns=[col.obj_name for col in request.columns],
-                total=len(data)
+                total=len(data),
+                sql=sql
             ).model_dump(exclude_none=True)
         )
         
@@ -134,7 +137,7 @@ async def get_query_columns(query_id: int, db_name: str) -> List[QueryColumn]:
     Returns:
         List[QueryColumn]: Список колонок запроса
     """
-    query = text("""
+    query = text(f"""
         SELECT DISTINCT split_part(ord.val, ':', 2)::INTEGER ord, vals.id col_id, vals.val obj
             , CASE WHEN ref_def.t!=ref_def.id THEN ref_def.val WHEN obj.up=0 THEN obj.val ELSE par.val END obj_name
             , CASE WHEN ref_def.t!=ref_def.id THEN 1 END is_ref 
@@ -143,13 +146,13 @@ async def get_query_columns(query_id: int, db_name: str) -> List[QueryColumn]:
             , reqs.id req_id, refs.id orig_id
             , CASE WHEN subreqs.up IS NULL THEN refs.t ELSE NULL END ref
             , subreqs.up arr
-        FROM ru vals LEFT JOIN ru ord ON ord.up=vals.id
-            LEFT JOIN ru obj ON obj.id=vals.val::int8
-            LEFT JOIN ru par ON obj.up!=0 AND par.id=obj.t
-            LEFT JOIN ru ref_def ON ref_def.id=par.t
-            LEFT JOIN ru reqs ON obj.up=0 AND reqs.up=vals.val::int8
-            LEFT JOIN ru refs ON refs.id=reqs.t
-            LEFT JOIN ru subreqs ON subreqs.up=refs.id
+        FROM {db_name} vals LEFT JOIN {db_name} ord ON ord.up=vals.id
+            LEFT JOIN {db_name} obj ON obj.id=vals.val::int8
+            LEFT JOIN {db_name} par ON obj.up!=0 AND par.id=obj.t
+            LEFT JOIN {db_name} ref_def ON ref_def.id=par.t
+            LEFT JOIN {db_name} reqs ON obj.up=0 AND reqs.up=vals.val::int8
+            LEFT JOIN {db_name} refs ON refs.id=reqs.t
+            LEFT JOIN {db_name} subreqs ON subreqs.up=refs.id
         WHERE vals.t=120 AND vals.up=:query_id
             AND ((subreqs.up IS NULL AND reqs.id IS NULL) OR subreqs.up IS NOT NULL OR refs.val IS NULL)
         ORDER BY 1

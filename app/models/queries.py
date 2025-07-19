@@ -20,7 +20,6 @@ class QueryColumn(BaseModel):
     ord: int
 
 class QueryRequest(BaseModel):
-    query_id: int
     columns: List[QueryColumn]
     filters: Optional[Dict[str, Any]] = None
     parameters: Optional[Dict[str, Any]] = None
@@ -29,6 +28,7 @@ class QueryResponse(BaseModel):
     data: List[Dict[str, Any]]
     columns: List[str]
     total: int
+    sql: Optional[str] = None
     warning: Optional[str] = None
 
 class JoinInfo(BaseModel):

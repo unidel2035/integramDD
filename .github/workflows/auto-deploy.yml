@@ -3,10 +3,10 @@ name: Auto Deploy
 on:
     push:
         branches:
-            - main
+            - feature-queries/main
     pull_request:
         branches:
-            - main
+            - feature-queries/main
 
 jobs:
     deploy:

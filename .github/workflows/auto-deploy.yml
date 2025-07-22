@@ -30,8 +30,8 @@ jobs:
 
                     echo "Resetting working tree to remote state..."
                     git fetch origin
-                    git checkout main || git checkout -b main
-                    git reset --hard origin/main
+                    git checkout ${{ github.ref_name }} || git checkout -b ${{ github.ref_name }}
+                    git reset --hard origin/${{ github.ref_name }}
                     git clean -fd
 
                     docker compose build backend

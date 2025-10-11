@@ -13,8 +13,13 @@ DATABASE_URL = (
     f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
 )
 
-# Create async SQLAlchemy engine and session factory
-engine = create_async_engine(DATABASE_URL, echo=True)
+# Create async SQLAlchemy engine and session factory with timeouts
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=True,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
+    connect_args={"command_timeout": settings.DB_COMMAND_TIMEOUT}
+)
 SessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

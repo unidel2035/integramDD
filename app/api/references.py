@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -11,6 +11,8 @@ from app.models.references import (
 )
 from app.services.error_manager import error_manager as em
 from app.logger import setup_logger
+from app.limiter import limiter
+from app.settings import settings
 
 router = APIRouter()
 logger = setup_logger(__name__)
@@ -20,7 +22,9 @@ logger = setup_logger(__name__)
     "/{db_name}/references",
     response_model=CreateReferenceResponse,
 )
+@limiter.limit(settings.RATE_LIMIT_CREATE)
 async def create_reference(
+    request: Request,
     db_name: str = Depends(validate_table_exists),
     payload: CreateReferenceRequest = ...,
 ):

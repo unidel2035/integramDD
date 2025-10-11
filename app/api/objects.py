@@ -18,6 +18,7 @@ from app.services.object_by_term import (
     _build_reqs_map,
 )
 from app.services.filter_builder import FilterBuilder
+from app.rate_limiter import limiter
 
 
 router = APIRouter()
@@ -28,7 +29,9 @@ logger = setup_logger(__name__)
     "/{db_name}/objects",
     response_model=ObjectCreateResponse,
 )
+@limiter.limit("10/minute")
 async def create_object(
+    request: Request,
     payload: ObjectCreateRequest,
     db_name: str = Depends(validate_table_exists),
 ) -> ObjectCreateResponse:
@@ -115,7 +118,9 @@ async def create_object(
     "/{db_name}/objects/{object_id}",
     response_model=PatchObjectResponse,
 )
+@limiter.limit("20/minute")
 async def patch_object(
+    request: Request,
     object_id: int = Path(..., description="ID of the object to patch"),
     payload: PatchObjectRequest = ...,
     db_name: str = Depends(validate_table_exists),
@@ -173,7 +178,9 @@ async def patch_object(
     "/{db_name}/objects/{object_id}",
     response_model=DeleteObjectResponse,
 )
+@limiter.limit("10/minute")
 async def delete_object(
+    request: Request,
     db_name: str = Path(..., description="Database name"),
     object_id: int = Path(..., description="ID of the object to delete"),
 ):
@@ -204,7 +211,9 @@ async def delete_object(
 
 
 @router.get("/{db_name}/object/{object_id}")
+@limiter.limit("30/minute")
 async def get_object(
+    request: Request,
     db_name: str = Depends(validate_table_exists),
     object_id: int = Path(..., description="Object ID to fetch"),
 ):
@@ -270,6 +279,7 @@ async def get_object(
 
 
 @router.get("/{db_name}/objects/{term_id}", response_model=TermObjectsResponse)
+@limiter.limit("30/minute")
 async def get_term_objects(
     request: Request,
     db_name: str = Path(..., description="Database name"),
@@ -391,8 +401,11 @@ async def get_term_objects(
 
 
 @router.post("/{db_name}/objects/graphql")
+@limiter.limit("30/minute")
 async def get_term_objects_post(
-    query: ObjectQuery, db_name: str = Path(..., description="Database name")
+    request: Request,
+    query: ObjectQuery,
+    db_name: str = Path(..., description="Database name"),
 ):
     """
     Альтернатива GET-запросу на /objects/{termId}?up={parentId}, но с телом POST.

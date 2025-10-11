@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Path, Body, HTTPException
+from fastapi import APIRouter, Depends, Path, Body, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,6 +14,7 @@ from app.models.requisites import (
 )
 from app.services.error_manager import error_manager as em
 from app.logger import setup_logger
+from app.rate_limiter import limiter
 
 
 router = APIRouter()
@@ -23,7 +24,9 @@ logger = setup_logger(__name__)
     "/{db_name}/requisites",
     response_model=AddRequisiteResponse,
 )
+@limiter.limit("15/minute")
 async def post_requisite(
+    request: Request,
     db_name: str = Depends(validate_table_exists),
     payload: AddRequisitePayload = Body(
         ..., description="Requisite data with optional modifiers"

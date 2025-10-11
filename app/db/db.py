@@ -13,8 +13,19 @@ DATABASE_URL = (
     f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
 )
 
-# Create async SQLAlchemy engine and session factory
-engine = create_async_engine(DATABASE_URL, echo=True)
+# Create async SQLAlchemy engine and session factory with timeouts
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=True,
+    pool_timeout=30,  # Timeout for getting connection from pool
+    pool_pre_ping=True,  # Verify connections before using them
+    connect_args={
+        "command_timeout": 30,  # Timeout for individual commands (in seconds)
+        "server_settings": {
+            "statement_timeout": "30000"  # PostgreSQL statement timeout (30s in milliseconds)
+        },
+    },
+)
 SessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

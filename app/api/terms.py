@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Path, HTTPException, Depends, status
+from fastapi import APIRouter, Path, HTTPException, Depends, status, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text, bindparam
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,6 +12,7 @@ from app.services.error_manager import error_manager as em
 from app.auth.auth import verify_token
 from app.logger import setup_logger
 from app.settings import settings
+from app.rate_limiter import limiter
 
 
 router = APIRouter()
@@ -22,7 +23,9 @@ logger = setup_logger(__name__)
     "/{db_name}/terms",
     response_model=List[Term],
 )
+@limiter.limit("30/minute")
 async def get_all_terms(
+    request: Request,
     db_name: str = Depends(validate_table_exists),
 ):
     """Fetches all metadata terms from the database.
@@ -50,7 +53,9 @@ async def get_all_terms(
     "/{db_name}/terms/{term_id}",
     response_model=Term,
 )
+@limiter.limit("30/minute")
 async def get_term(
+    request: Request,
     term_id: int = Path(..., description="Term ID to fetch"),
     db_name: str = Depends(validate_table_exists),
 ):
@@ -86,7 +91,9 @@ async def get_term(
     "/{db_name}/metadata/{term_id}",
     response_model=TermMetadata,
 )
+@limiter.limit("30/minute")
 async def get_metadata_by_id(
+    request: Request,
     term_id: int = Path(..., description="Term ID to fetch"),
     db_name: str = Depends(validate_table_exists),
 ):
@@ -123,7 +130,10 @@ async def get_metadata_by_id(
     "/{db_name}/metadata",
     response_model=List[TermMetadata],
 )
-async def get_all_metadata(db_name: str = Depends(validate_table_exists)):
+@limiter.limit("30/minute")
+async def get_all_metadata(
+    request: Request, db_name: str = Depends(validate_table_exists)
+):
     """Fetches all metadata terms from the database.
 
     This endpoint returns a list of all defined terms and their metadata.
@@ -145,7 +155,9 @@ async def get_all_metadata(db_name: str = Depends(validate_table_exists)):
     "/{db_name}/terms",
     response_model=TermCreateResponse,
 )
+@limiter.limit("10/minute")
 async def create_term(
+    request: Request,
     payload: TermCreateRequest,
     db_name: str = Depends(validate_table_exists),
 ) -> TermCreateResponse:
@@ -207,7 +219,9 @@ async def create_term(
     "/{db_name}/terms/{term_id}",
     response_model=PatchTermResponse,
 )
+@limiter.limit("20/minute")
 async def patch_term(
+    request: Request,
     db_name: str = Path(..., description="Database name"),
     term_id: int = Path(..., description="ID of the term to update"),
     payload: PatchTermRequest = ...,
@@ -299,7 +313,9 @@ async def patch_term(
     "/{db_name}/terms/{term_id}",
     response_model=DeleteTermResponse,
 )
+@limiter.limit("10/minute")
 async def delete_term(
+    request: Request,
     db_name: str = Path(..., description="Database name"),
     term_id: int = Path(..., description="ID of the term to delete"),
 ):

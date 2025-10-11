@@ -1,13 +1,25 @@
 from fastapi import FastAPI
 from fastapi.security import HTTPBearer
 from fastapi.openapi.utils import get_openapi
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api import health, objects, requisites, references, terms
 from app.middleware.auth_middleware import AuthMiddleware
+from app.middleware.request_size_middleware import RequestSizeLimitMiddleware
+from app.rate_limiter import limiter
 
 
 app = FastAPI()
+
+# Configure rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Add middlewares
 app.add_middleware(AuthMiddleware)
+app.add_middleware(RequestSizeLimitMiddleware, max_request_size=1_000_000)  # 1MB limit
+
 security = HTTPBearer()
 
 def custom_openapi():

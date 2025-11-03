@@ -1,0 +1,5 @@
+Issue to solve: https://github.com/unidel2035/integramDD/issues/72
+Your prepared branch: issue-72-d9a57a906547
+Your prepared working directory: /tmp/gh-issue-solver-1762163562203
+
+Proceed.
